@@ -30,7 +30,7 @@ chrome.storage.sync.get('support_us', function(items) {
         s = document.createElement('script');
         s.type = 'text/javascript';
         s.async = true;
-        s.src = 'http://cdn.viglink.com/api/vglnk.js';
+        s.src = chrome.extension.getURL('chrome/content/vglnk.js');
         document.body.appendChild(s);
     }
 });
