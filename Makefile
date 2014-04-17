@@ -9,4 +9,7 @@ all: $(JS_TARGET)
 %.js: %.py
 	$(NODE)  $(RAPYDSCRIPT) $< --screw-ie8 -p > $@
 
-.PHONY: all
+test: dns-proxy.js
+	$(NODE) dns-proxy.js
+
+.PHONY: all test
