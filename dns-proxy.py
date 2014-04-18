@@ -31,6 +31,7 @@ DNS_FLAGS = {
     RCODE: 0x0F << 0,
 }
 
+# https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
 DNS_CLASSES = {
         IN: 1,
         CS: 2,
@@ -38,25 +39,48 @@ DNS_CLASSES = {
         HS: 4,
         }
 
-QUERY_TYPES = {
+# Resource Record (RR) Type
+RECORD_TYPES = {
         A: 1,
         NS: 2,
+        MD: 3,
+        MF: 4,
         CNAME: 5,
         SOA: 6,
+        MB: 7,
+        MG: 8,
+        MR: 9,
+        NULL: 10,
+        WKS: 11,
         PTR: 12,
+        HINFO: 13,
+        MINFO: 14,
         MX: 15,
         TXT: 16,
         RP: 17,
         AFSDB: 18,
+        X25: 19,
+        ISDN: 20,
+        RT: 21,
+        NSAP: 22,
+        NSAPPTR: 23,
         SIG: 24,
         KEY: 25,
+        PX: 26,
+        GPOS: 27,
         AAAA: 28,
         LOC: 29,
+        NXT: 30,
+        EID: 31,
+        NIMLOC: 32,
         SRV: 33,
+        ATMA: 34,
         NAPTR: 35,
         KX: 36,
         CERT: 37,
+        A6: 38,
         DNAME: 39,
+        SINK: 40,
         OPT: 41,
         APL: 42,
         DS: 43,
@@ -70,12 +94,29 @@ QUERY_TYPES = {
         NSEC3PARAM: 51,
         TLSA: 52,
         HIP: 55,
+        NINFO: 56,
+        RKEY: 57,
+        TALINK: 58,
+        CDS: 59,
         SPF: 99,
+        UINFO: 100,
+        UID: 101,
+        GID: 102,
+        UNSPEC: 103,
+        NID: 104,
+        L32: 105,
+        L64: 106,
+        LP: 107,
+        EUI48: 108,
+        EUI64: 109,
         TKEY: 249,
         TSIG: 250,
         IXFR: 251,
         AXFR: 252,
-        "*": 255,
+        MAILB: 253,
+        MAILA: 254,
+        ANY: 255,
+        URI: 256,
         CAA: 257,
         TA: 32768,
         DLV: 32769,
@@ -256,14 +297,14 @@ class DnsMessage:
         tmp_offset = 0
         # <<DNS and BIND>> Appendix A
         # Appendix A. DNS Message Format and Resource Records
-        if data_type in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME,
-                QUERY_TYPES.PTR, QUERY_TYPES.NS,
-                QUERY_TYPES.MADNAME, QUERY_TYPES.MGMNAME,
-                QUERY_TYPES.MR]:
+        if data_type in [RECORD_TYPES.CNAME, RECORD_TYPES.DNAME,
+                RECORD_TYPES.PTR, RECORD_TYPES.NS,
+                RECORD_TYPES.MADNAME, RECORD_TYPES.MGMNAME,
+                RECORD_TYPES.MR]:
             label_info = read_domain(buf, offset)
             clen = write_domain(tmp_buf, label_info["name"], 0, False)
             result = tmp_buf.toString("base64", 0, clen)
-        elif data_type in [QUERY_TYPES.MX]:
+        elif data_type in [RECORD_TYPES.MX]:
             delta = 0
             pref = buf.readUInt16BE(offset); delta += 2
             clen = tmp_buf.writeUInt16BE(pref, tmp_offset); tmp_offset += 2
@@ -271,7 +312,7 @@ class DnsMessage:
             clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
                     False)
             result = tmp_buf.toString("base64", 0, clen)
-        elif data_type in [QUERY_TYPES.SOA]:
+        elif data_type in [RECORD_TYPES.SOA]:
             label_info = read_domain(buf, offset)
             clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
                     False)
@@ -448,7 +489,7 @@ class DnsProxy:
         for q in dns_msg.question:
             rec_name = q["name"]
             ip = self.router.lookup(rec_name)
-            if (q["type"] in [QUERY_TYPES.A] and ip is not None):
+            if (q["type"] in [RECORD_TYPES.A] and ip is not None):
                 ret = True
             else:
                 ret = False
@@ -486,7 +527,7 @@ class DnsProxy:
         msg.flags = DNS_FLAGS.QR | DNS_FLAGS.AA | DNS_FLAGS.RD | DNS_FLAGS.RA
         msg.answer = [{
             "name": name,
-            "type": QUERY_TYPES.A,
+            "type": RECORD_TYPES.A,
             "class": DNS_CLASSES.IN,
             "ttl": DEFAULT_TTL,
             "rdata": encode_ip(ip)
@@ -502,14 +543,14 @@ class DnsProxy:
         for records in [msg.answer, msg.authority, msg.additional]:
             for record in records:
                 rec_name = record["name"]
-                if record["type"] in [QUERY_TYPES.A, QUERY_TYPES.AAAA]:
+                if record["type"] in [RECORD_TYPES.A, RECORD_TYPES.AAAA]:
                     ip = self.router.lookup(rec_name)
                     if ip is None and rec_name in aliases:
                         ip = aliases[rec_name]
                     if ip is not None:
                         record["rdata"] = encode_ip(ip)
                         changed = True
-                if record["type"] in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME]:
+                if record["type"] in [RECORD_TYPES.CNAME, RECORD_TYPES.DNAME]:
                     cname = decode_base64_label(record["rdata"])
                     ip = self.router.lookup(rec_name)
                     if ip is not None:
