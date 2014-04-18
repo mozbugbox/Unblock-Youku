@@ -7,9 +7,6 @@ EventEmitter = require("events").EventEmitter
 
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
 DEFAULT_TTL = 30 # time to live for our fake A record
-DNS_PORT = 53
-DNS_ENCODING = "ascii"
-DNS_POINTER_FLAG = 0xC0
 
 # 8.8.8.8 google
 # 8.8.4.4 google
@@ -21,6 +18,9 @@ DNS_POINTER_FLAG = 0xC0
 # 198.153.194.1 Norton
 DNS_DEFAULT_HOST = "8.8.8.8"
 
+DNS_PORT = 53
+DNS_ENCODING = "ascii"
+DNS_POINTER_FLAG = 0xC0
 DNS_FLAGS = {
     QR: 0x01 << 15,
     OPCODE: 0x0F << 11,
@@ -242,44 +242,51 @@ class DnsMessage:
             data, offset = self.parse_one_question(buf, offset)
             data["ttl"] = buf.readUInt32BE(offset); offset += 4
             rdlen = buf.readUInt16BE(offset); offset += 2
-            tmp_buf = Buffer(BUFFER_SIZE)
-            tmp_offset = 0
-            # <<DNS and BIND>> Appendix A
-            # Appendix A. DNS Message Format and Resource Records
-            if data["type"] in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME,
-                    QUERY_TYPES.PTR, QUERY_TYPES.NS,
-                    QUERY_TYPES.MADNAME, QUERY_TYPES.MGMNAME,
-                    QUERY_TYPES.MR]:
-                label_info = read_domain(buf, offset)
-                clen = write_domain(tmp_buf, label_info["name"], 0, False)
-                data["rdata"] = tmp_buf.toString("base64", 0, clen)
-            elif data["type"] in [QUERY_TYPES.MX]:
-                delta = 0
-                pref = buf.readUInt16BE(offset); delta += 2
-                clen = tmp_buf.writeUInt16BE(pref, tmp_offset); tmp_offset += 2
-                label_info = read_domain(buf, offset + delta)
-                clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
-                        False)
-                data["rdata"] = tmp_buf.toString("base64", 0, clen)
-            elif data["type"] in [QUERY_TYPES.SOA]:
-                label_info = read_domain(buf, offset)
-                clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
-                        False)
-                tmp_offset = clen
-                label_info = read_domain(buf, label_info["offset"])
-                clen = write_domain(tmp_buf, label_info["name"], clen, False)
-                tmp_offset = clen
-                extra_len = 5*4
-                buf.copy(tmp_buf, tmp_offset, label_info["offset"],
-                        label_info["offset"] + extra_len)
-                data["rdata"] = tmp_buf.toString("base64", 0,
-                        tmp_offset + extra_len)
-            else:
-                data["rdata"] = buf.toString("base64", offset, offset + rdlen)
+            data["rdata"] = self.read_rdata(buf, offset, rdlen, data["type"])
             offset += rdlen
             resource_record.push(data)
         #console.warn("resource_record", resource_record)
         return resource_record, offset
+
+    def read_rdata(self, buf, offset, rdlen, data_type):
+        """Read rdata from the buffer
+           To decompress labels, we have to take account of the record type
+        """
+        tmp_buf = Buffer(BUFFER_SIZE)
+        tmp_offset = 0
+        # <<DNS and BIND>> Appendix A
+        # Appendix A. DNS Message Format and Resource Records
+        if data_type in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME,
+                QUERY_TYPES.PTR, QUERY_TYPES.NS,
+                QUERY_TYPES.MADNAME, QUERY_TYPES.MGMNAME,
+                QUERY_TYPES.MR]:
+            label_info = read_domain(buf, offset)
+            clen = write_domain(tmp_buf, label_info["name"], 0, False)
+            result = tmp_buf.toString("base64", 0, clen)
+        elif data_type in [QUERY_TYPES.MX]:
+            delta = 0
+            pref = buf.readUInt16BE(offset); delta += 2
+            clen = tmp_buf.writeUInt16BE(pref, tmp_offset); tmp_offset += 2
+            label_info = read_domain(buf, offset + delta)
+            clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
+                    False)
+            result = tmp_buf.toString("base64", 0, clen)
+        elif data_type in [QUERY_TYPES.SOA]:
+            label_info = read_domain(buf, offset)
+            clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
+                    False)
+            tmp_offset = clen
+            label_info = read_domain(buf, label_info["offset"])
+            clen = write_domain(tmp_buf, label_info["name"], clen, False)
+            tmp_offset = clen
+            extra_len = 5*4
+            buf.copy(tmp_buf, tmp_offset, label_info["offset"],
+                    label_info["offset"] + extra_len)
+            result = tmp_buf.toString("base64", 0,
+                    tmp_offset + extra_len)
+        else:
+            result = buf.toString("base64", offset, offset + rdlen)
+        return result
 
     def write_buf(self, buf):
         """Output the message to a buf suitable to socket send"""
