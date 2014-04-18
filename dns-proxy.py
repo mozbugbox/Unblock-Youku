@@ -11,6 +11,16 @@ DNS_PORT = 53
 DNS_ENCODING = "ascii"
 DNS_POINTER_FLAG = 0xC0
 
+# 8.8.8.8 google
+# 8.8.4.4 google
+# 156.154.70.1 Dnsadvantage
+# 156.154.71.1 Dnsadvantage
+# 208.67.222.222 OpenDNS
+# 208.67.220.220 OpenDNS
+# 198.153.192.1 Norton
+# 198.153.194.1 Norton
+DNS_DEFAULT_HOST = "8.8.8.8"
+
 DNS_FLAGS = {
     QR: 0x01 << 15,
     OPCODE: 0x0F << 11,
@@ -108,16 +118,18 @@ def read_domain(buf, offset):
 def write_domain(buf, name, offset, do_compress=True):
     """Write a domain name in DNS encoding"""
     #console.log("name", name)
-    if not buf.offset_map:
-        buf.offset_map = {}
-    if name in buf.offset_map and do_compress is True:
-        pointer = buf.offset_map[name]
+    if not buf.offset_cache:
+        buf.offset_cache = {}
+    #console.warn("Packable?", do_compress, name, buf.offset_cache)
+    if name in buf.offset_cache and do_compress is True:
+        pointer = buf.offset_cache[name]
         buf.writeUInt16BE((DNS_POINTER_FLAG<<8)|pointer, offset); offset += 2
+        #console.warn("compressed:", name)
     else:
-        buf.offset_map[name] = offset
+        # record offset of each piece for label compression
         parts = name.split(".")
-        p = parts[0]
-        wlen = buf.write(p, offset + 1, DNS_ENCODING)
+        buf.offset_cache[name] = offset
+        wlen = buf.write(parts[0], offset + 1, DNS_ENCODING)
         buf.writeUInt8(wlen, offset); offset += 1
         offset += wlen
         if parts.length > 1:
@@ -126,6 +138,11 @@ def write_domain(buf, name, offset, do_compress=True):
         else:
             buf.writeUInt8(0, offset); offset += 1
     return offset
+
+def decode_base64_label(label_string):
+    lbuf = Buffer(label_string, "base64")
+    name_info = read_domain(lbuf, 0)
+    return name_info["name"]
 
 #console.log(read_domain(Buffer("\03www\04sohu\03com\00", "binary"), 0))
 #console.log(read_domain(Buffer("\04sohu\03com\xC0\x0B\02cn\00", "binary"), 0))
@@ -303,6 +320,7 @@ class DnsMessage:
         for rr in resource_record:
             offset = self.write_one_question(buf, rr, offset)
             buf.writeUInt32BE(rr["ttl"], offset); offset += 4
+            # FIXME: rdata can be label compressed too, decode like read
             wlen = buf.write(rr["rdata"], offset + 2, "base64")
             buf.writeUInt16BE(wlen, offset); offset += 2
             offset += wlen
@@ -323,7 +341,7 @@ class DnsUDPClient(EventEmitter):
     """
     def __init__(self, options):
         self.options = options
-        self.timeout = 5000 # 3 sec
+        self.timeout = 10000 # in sec
         self.timeout_id = -1
         self.client = None
 
@@ -372,11 +390,23 @@ class DnsUDPClient(EventEmitter):
 
 class DnsProxy:
     def __init__(self, options, router=None):
-        """Router is used to route local name to ip"""
+        """Router is used to route local name to ip
+            options:
+                listen_port: dns proxy port. default: 53
+                listen_address: dns proxy address. default: 0.0.0.0
+                dns_host: remote DNS server we do real DNS lookup.
+                          default: 8.8.8.8
+            router: a router class to direct domain name to fake ip.
+                    Should have a method router.lookup(domain_name)
+                    return an ip address or None
+
+        """
         if router is None:
             router = BaseRouter()
         self.timeout = 30 * 1000 # milliseconds
         self.router = router
+        if not options["dns_host"]:
+            options["dns_host"] = DNS_DEFAULT_HOST
         self.options = options
         self.query_map = {}
         self.usock = dgram.createSocket("udp4")
@@ -396,15 +426,26 @@ class DnsProxy:
         if buf.length > BUFFER_SIZE:
             BUFFER_SIZE = buf.length
         dns_msg = DnsMessage(buf)
+        raddress = remote_info.address
+        rport = remote_info.port
+        #ret = self.local_router_lookup(dns_msg, rport, raddress)
+        self.remote_lookup(buf, dns_msg, rport, raddress)
+
+    def local_router_lookup(dns_msg, rport, raddress):
+        ret = False
+        for q in dns_msg.question:
+            pass
+        ip = self.router.lookup(dns_msg)
+        return ret
+
+    def remote_lookup(self, buf, dns_msg, rport, raddress):
         dns_client = DnsUDPClient(self.options)
-        query_key = dns_msg.id + remote_info.address + remote_info.port
+        query_key = dns_msg.id + raddress + rport
         d = Date()
         time_stamp = d.getTime()
         self.query_map[query_key] = [dns_client, time_stamp]
         dns_client.on("resolved", def(buf):
-            self.handle_lookup_result(buf,
-                remote_info.port,
-                remote_info.address)
+            self.handle_lookup_result(buf, rport, raddress)
         )
         dns_client.lookup(dns_msg)
 
@@ -433,14 +474,25 @@ class DnsProxy:
         """process remote real dns lookup response"""
         msg = DnsMessage(buf)
         changed = False
+        aliases = {}
+
         for records in [msg.answer, msg.authority, msg.additional]:
             for record in records:
+                rec_name = record["name"]
                 if record["type"] in [QUERY_TYPES.A, QUERY_TYPES.AAAA]:
-                    add = record["name"]
-                    ip = self.router.lookup(add)
+                    ip = self.router.lookup(rec_name)
+                    if ip is None and rec_name in aliases:
+                        ip = aliases[rec_name]
                     if ip is not None:
                         record["rdata"] = encode_ip(ip)
                         changed = True
+                if record["type"] in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME]:
+                    cname = decode_base64_label(record["rdata"])
+                    ip = self.router.lookup(rec_name)
+                    if ip is not None:
+                        aliases[cname] = ip
+                    elif rec_name in aliases:
+                        aliases[cname] = aliases[rec_name]
         #changed = True; console.warn("changed:", changed)
         if changed is True:
             buf = Buffer(BUFFER_SIZE)
@@ -461,6 +513,9 @@ class DnsProxy:
     def start(self, ip="0.0.0.0"):
         port = self.options["listen_port"] or DNS_PORT
         #console.warn("listen port", port)
+        if ["listen_ip"] in self.options:
+            ip = self.options["listen_ip"]
+
         self.usock.bind(port, ip)
         self.clean_interval = setInterval(def ():
                 self.clean_query_map()
@@ -488,7 +543,7 @@ class BaseRouter:
     def lookup(self, address):
         result = None
         if address in self.address_map:
-            result = self.address_map[result]
+            result = self.address_map[address]
         return result
 
 def main_test():
@@ -497,7 +552,7 @@ def main_test():
     DnsProxy(options, router).start()
 
     childp = require("child_process")
-    qs = ["www.sohu.com mx", "www.baidu.com"]
+    qs = ["www.sohu.com", "www.sohu.com mx", "fhk.a.sohu.com"]
     cmd_prefix = "/usr/bin/dig @127.0.0.1 -p 2000 "
     def rerun(error, stdout, stderr): # recursive exec dns query cmd
         if stdout: console.log(stdout)
