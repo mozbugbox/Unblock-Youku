@@ -437,20 +437,17 @@ class DnsProxy:
            send out a "A" response immediately
         """
         ret = False
-        aname = None
         ip = None
         for q in dns_msg.question:
             rec_name = q["name"]
-            if (q["type"] in [QUERY_TYPES.A] and
-                    self.router.lookup(rec_name) is not None):
-                aname = rec_name
-                ip = self.router.lookup(rec_name)
+            ip = self.router.lookup(rec_name)
+            if (q["type"] in [QUERY_TYPES.A] and ip is not None):
                 ret = True
             else:
                 ret = False
                 break
         if ret is True:
-            send_msg = self.create_a_message(dns_msg.id, aname, ip)
+            send_msg = self.create_a_message(dns_msg.id, rec_name, ip)
             send_msg.question = dns_msg.question
             buf = Buffer(BUFFER_SIZE)
             length = send_msg.write_buf(buf)
