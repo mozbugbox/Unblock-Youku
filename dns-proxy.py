@@ -105,15 +105,26 @@ def read_domain(buf, offset):
     #console.warn(ret)
     return ret
 
-def write_domain(buf, name, offset):
+def write_domain(buf, name, offset, do_compress=True):
     """Write a domain name in DNS encoding"""
     #console.log("name", name)
-    parts = name.split(".")
-    for p in parts:
+    if not buf.offset_map:
+        buf.offset_map = {}
+    if name in buf.offset_map and do_compress is True:
+        pointer = buf.offset_map[name]
+        buf.writeUInt16BE((DNS_POINTER_FLAG<<8)|pointer, offset); offset += 2
+    else:
+        buf.offset_map[name] = offset
+        parts = name.split(".")
+        p = parts[0]
         wlen = buf.write(p, offset + 1, DNS_ENCODING)
         buf.writeUInt8(wlen, offset); offset += 1
         offset += wlen
-    buf.writeUInt8(0, offset); offset += 1
+        if parts.length > 1:
+            tail = parts.slice(1)
+            offset = write_domain(buf, tail.join("."), offset, do_compress)
+        else:
+            buf.writeUInt8(0, offset); offset += 1
     return offset
 
 #console.log(read_domain(Buffer("\03www\04sohu\03com\00", "binary"), 0))
@@ -214,9 +225,41 @@ class DnsMessage:
             data, offset = self.parse_one_question(buf, offset)
             data["ttl"] = buf.readUInt32BE(offset); offset += 4
             rdlen = buf.readUInt16BE(offset); offset += 2
-            data["rdata"] = buf.toString("base64", offset, offset + rdlen)
+            tmp_buf = Buffer(BUFFER_SIZE)
+            tmp_offset = 0
+            # <<DNS and BIND>> Appendix A
+            # Appendix A. DNS Message Format and Resource Records
+            if data["type"] in [QUERY_TYPES.CNAME, QUERY_TYPES.DNAME,
+                    QUERY_TYPES.PTR, QUERY_TYPES.NS,
+                    QUERY_TYPES.MADNAME, QUERY_TYPES.MGMNAME,
+                    QUERY_TYPES.MR]:
+                label_info = read_domain(buf, offset)
+                clen = write_domain(tmp_buf, label_info["name"], 0, False)
+                data["rdata"] = tmp_buf.toString("base64", 0, clen)
+            elif data["type"] in [QUERY_TYPES.MX]:
+                delta = 0
+                pref = buf.readUInt16BE(offset); delta += 2
+                clen = tmp_buf.writeUInt16BE(pref, tmp_offset); tmp_offset += 2
+                label_info = read_domain(buf, offset + delta)
+                clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
+                        False)
+                data["rdata"] = tmp_buf.toString("base64", 0, clen)
+            elif data["type"] in [QUERY_TYPES.SOA]:
+                label_info = read_domain(buf, offset)
+                clen = write_domain(tmp_buf, label_info["name"], tmp_offset,
+                        False)
+                tmp_offset = clen
+                label_info = read_domain(buf, label_info["offset"])
+                clen = write_domain(tmp_buf, label_info["name"], clen, False)
+                tmp_offset = clen
+                extra_len = 5*4
+                buf.copy(tmp_buf, tmp_offset, label_info["offset"],
+                        label_info["offset"] + extra_len)
+                data["rdata"] = tmp_buf.toString("base64", 0,
+                        tmp_offset + extra_len)
+            else:
+                data["rdata"] = buf.toString("base64", offset, offset + rdlen)
             offset += rdlen
-            bhex = buf.toString("hex", 0)
             resource_record.push(data)
         #console.warn("resource_record", resource_record)
         return resource_record, offset
@@ -398,8 +441,9 @@ class DnsProxy:
                     if ip is not None:
                         record["rdata"] = encode_ip(ip)
                         changed = True
+        #changed = True; console.warn("changed:", changed)
         if changed is True:
-            buf = Buffer()
+            buf = Buffer(BUFFER_SIZE)
             offset = msg.write_buf(buf)
         else:
             offset = buf.length
@@ -449,29 +493,21 @@ class BaseRouter:
 
 def main_test():
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
-    options = {"dns_host": "8.8.8.8",
-            "listen_port": 2000}
-    proxy = DnsProxy(options, router)
-    proxy.start()
+    options = {"dns_host": "8.8.8.8", "listen_port": 2000}
+    DnsProxy(options, router).start()
 
     childp = require("child_process")
-    cmd = "/usr/bin/dig @127.0.0.1 -p 2000 www.sohu.com"
-    child = childp.exec(cmd,
-            def (error, stdout, stderr):
-                console.log("$", cmd)
-                console.log(stdout)
-                if error:
-                    console.log(error)
-        )
-    cmd = "/usr/bin/dig @127.0.0.1 -p 2000 www.baidu.com"
-    child = childp.exec(cmd,
-            def (error, stdout, stderr):
-                console.log("$", cmd)
-                console.log(stdout)
-                if error:
-                    console.log(error)
-                process.exit(code=0)
-        )
+    qs = ["www.sohu.com mx", "www.baidu.com"]
+    cmd_prefix = "/usr/bin/dig @127.0.0.1 -p 2000 "
+    def rerun(error, stdout, stderr): # recursive exec dns query cmd
+        if stdout: console.log(stdout)
+        if error: console.log(error)
+        if qs.length > 0:
+            cmd = cmd_prefix + qs.pop()
+            console.log("$", cmd)
+            childp.exec(cmd, rerun)
+        else: process.exit(code=0)
+    rerun()
 
 main_test()
 exports.DnsProxy = DnsProxy
