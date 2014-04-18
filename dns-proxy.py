@@ -428,14 +428,33 @@ class DnsProxy:
         dns_msg = DnsMessage(buf)
         raddress = remote_info.address
         rport = remote_info.port
-        #ret = self.local_router_lookup(dns_msg, rport, raddress)
-        self.remote_lookup(buf, dns_msg, rport, raddress)
+        ret = self.local_router_lookup(dns_msg, rport, raddress)
+        if ret is False:
+            self.remote_lookup(buf, dns_msg, rport, raddress)
 
-    def local_router_lookup(dns_msg, rport, raddress):
+    def local_router_lookup(self, dns_msg, rport, raddress):
+        """Short cut, if only an "A" query for routed domains,
+           send out a "A" response immediately
+        """
         ret = False
+        aname = None
+        ip = None
         for q in dns_msg.question:
-            pass
-        ip = self.router.lookup(dns_msg)
+            rec_name = q["name"]
+            if (q["type"] in [QUERY_TYPES.A] and
+                    self.router.lookup(rec_name) is not None):
+                aname = rec_name
+                ip = self.router.lookup(rec_name)
+                ret = True
+            else:
+                ret = False
+                break
+        if ret is True:
+            send_msg = self.create_a_message(dns_msg.id, aname, ip)
+            send_msg.question = dns_msg.question
+            buf = Buffer(BUFFER_SIZE)
+            length = send_msg.write_buf(buf)
+            self.send_response(buf, length, rport, raddress)
         return ret
 
     def remote_lookup(self, buf, dns_msg, rport, raddress):
