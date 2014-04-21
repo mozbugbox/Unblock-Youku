@@ -3,13 +3,11 @@
 
 httpProxy = require("http-proxy")
 http = require("http")
-u = require("uglify-js")
 
 sogou = require('../shared/sogou')
 shared_tools = require('../shared/tools')
 server_utils = require('./utils')
 logger = server_utils.logger
-#server_utils = require('./utils2')
 
 MAX_ERROR_COUNT = {
     "reset_count": 1,
