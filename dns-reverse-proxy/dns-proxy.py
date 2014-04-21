@@ -610,7 +610,7 @@ class BaseRouter:
             result = self.address_map[address]
         return result
 
-def main_test():
+def test_main():
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
     options = {"dns_host": "8.8.8.8", "listen_port": 2000}
     DnsProxy(options, router).start()
@@ -628,6 +628,6 @@ def main_test():
         else: process.exit(code=0)
     rerun()
 
-main_test()
+exports.test_main = test_main
 exports.DnsProxy = DnsProxy
 exports.BaseRouter = BaseRouter
