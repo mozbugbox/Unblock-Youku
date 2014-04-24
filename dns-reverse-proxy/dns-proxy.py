@@ -398,9 +398,9 @@ class DnsUDPClient(EventEmitter):
         client = dgram.createSocket("udp4")
         self.client = client
         client.unref()
-        client.on("message", def (b, r):
-                self._on_message(b, r)
-            )
+        def _on_msg(b, r):
+            self._on_message(b, r)
+        client.on("message", _on_msg)
 
         if isinstance(msg, Buffer):
             buf = msg
@@ -414,9 +414,9 @@ class DnsUDPClient(EventEmitter):
 
         #console.warn(buf, offset, DNS_PORT, self.options["dns_host"])
         client.send(buf, 0, offset, DNS_PORT, self.options["dns_host"])
-        self.timeout_id = setTimeout(def():
-                self.kill_me
-            , self.timeout)
+        def _on_kill_me_timeout():
+            self.kill_me()
+        self.timeout_id = setTimeout(_on_kill_me_timeout, self.timeout)
 
     def _on_message(self, buf, remote_info):
         nonlocal BUFFER_SIZE
@@ -458,15 +458,16 @@ class DnsProxy:
         self.options = options
         self.query_map = {}
         self.usock = dgram.createSocket("udp4")
-        self.usock.on("message", def(b, r):
-                self._on_dns_message(b, r)
-            )
-        self.usock.on("listening", def():
-                self._on_dns_listening()
-            )
-        self.usock.on("error", def(err):
-                self._on_dns_error(err)
-            )
+
+        def _on_message(b, r):
+            self._on_dns_message(b, r)
+        def _on_error(err):
+            self._on_dns_error(err)
+        def _on_listening():
+            self._on_dns_listening()
+        self.usock.on("message", _on_message)
+        self.usock.on("listening", _on_listening)
+        self.usock.on("error", _on_error)
 
     def _on_dns_message(self, buf, remote_info):
         #console.log("remote info:", remote_info)
@@ -508,9 +509,9 @@ class DnsProxy:
         d = Date()
         time_stamp = d.getTime()
         self.query_map[query_key] = [dns_client, time_stamp]
-        dns_client.on("resolved", def(buf):
+        def _on_resolved(buf):
             self.handle_lookup_result(buf, rport, raddress)
-        )
+        dns_client.on("resolved", _on_resolved)
         dns_client.lookup(dns_msg)
 
     def _on_dns_error(self, err):
@@ -581,9 +582,9 @@ class DnsProxy:
             ip = self.options["listen_ip"]
 
         self.usock.bind(port, ip)
-        self.clean_interval = setInterval(def ():
-                self.clean_query_map()
-            , 10*1000)
+        def _on_clean_interval():
+            self.clean_query_map()
+        self.clean_interval = setInterval(_on_clean_interval, 10*1000)
 
     def clean_query_map(self):
         """Clean up query map periodically"""
