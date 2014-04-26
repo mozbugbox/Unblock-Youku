@@ -33,6 +33,9 @@ def load_dns_map(target_ip):
     dmap = {}
     for domain in domain_list:
         dmap[domain] = target_ip
+
+    # our proxy test server
+    dmap["httpbin.org"] = target_ip
     #log.debug(dmap)
     return dmap
 

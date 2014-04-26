@@ -146,7 +146,7 @@ def fetch_user_domain():
     domain_dict = {}
     for u in shared_urls.url_list:
         # FIXME: can we do https proxy?
-        #if u.indexOf("https") is 0: continue
+        if u.indexOf("https") is 0: continue
         parsed_url = url.parse(u)
         hostname = parsed_url.hostname
         if hostname and hostname not in domain_dict:

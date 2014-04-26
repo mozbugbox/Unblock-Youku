@@ -53,15 +53,15 @@ As you can see, running it under root is easier. But root is dangerous!
 Anyway, use your own judgement. We're not responsible for any damage caused
 by running the server. See the Disclaimer above.
 
-Dependencies
-============
+Dependency
+==========
 
-Build Dependent
----------------
+Build Dependency
+----------------
  * rapydscript
 
-Runtime Dependent
------------------
+Runtime Dependency
+------------------
  * http-proxy
  * optimist
 
@@ -93,8 +93,8 @@ The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
 which is a pre-compiler for JavaScript like CoffeeScript. The syntax is basic
 Python with a few javascript concept.
 
-CoffeeScript is syntax just too non-python to the taste of mine (mozbugbox).
-RapydScript is much more python look alike.
+CoffeeScript syntax is just too much non-python to the taste of mine
+(mozbugbox).  RapydScript is much more python look alike.
 
 Let's just see how long before the author of Rapydscript lost his enthusiasm
 over maintaining the pre-compiler. Finger crossed.

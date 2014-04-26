@@ -87,8 +87,20 @@ class ReverseSogouProxy:
         """The handler of node proxy server"""
         proxy = self.proxy
         req.headers["DNS-Reverse-Proxy"] = self.proxy_port
+
+        # We fake hosting http pages. But we are actually a proxy.
+        # A httpd server normally receives path to the GET/POST request, but
+        # being a proxy, the request need to be absolute URI, not just path.
+        if req.url.indexOf("http") is not 0:
+            host = req.headers["host"] or req.headers["Host"]
+            url = "http://" + host + req.url
+            req.url = url
+        else:
+            url = req.url
+        to_use_proxy = server_utils.is_valid_url(url)
+
         logger.debug("sogou:", self.sogou_host)
-        to_use_proxy = server_utils.is_valid_url(req.url)
+        logger.debug("do_proxy req.url:", url, to_use_proxy)
 
         # cannot forward cookie settings for other domains in redirect mode
         forward_cookies = False
@@ -108,10 +120,11 @@ class ReverseSogouProxy:
             proxy_options = {
                     "target": req.url,
             }
+        logger.debug("do_proxy headers before:", req.headers)
         headers = server_utils.filtered_request_headers(
                 req.headers, forward_cookies)
         req.headers = headers
-        logger.debug(headers)
+        logger.debug("do_proxy headers:", headers)
 
         proxy.web(req, res, proxy_options)
 
@@ -123,10 +136,12 @@ class ReverseSogouProxy:
             self.refuse_count += 1
         elif 'ETIMEDOUT' is err.code:
             self.timeout_count += 1
+        else:
+            self.reset_count += 1 # unknown error
         self.renew_sogou_server()
 
     def _on_proxy_response(self, res):
-        logger.debug("_on_proxy_response:", res)
+        #logger.debug("_on_proxy_response:", res)
         if res.statusCode == 404:
             via = res.headers["via"]
             if not via:
@@ -138,7 +153,7 @@ class ReverseSogouProxy:
                 self.refuse_count += 1
                 self.renew_sogou_server()
                 logger.warn("We are fucked by man-in-the-middle:\n",
-                        res.headers)
+                        res.headers, res.statusCode)
 
     def start(self):
         opt = self.options
