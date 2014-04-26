@@ -578,8 +578,8 @@ class DnsProxy:
     def start(self, ip="0.0.0.0"):
         port = self.options["listen_port"] or DNS_PORT
         #console.warn("listen port", port)
-        if ["listen_ip"] in self.options:
-            ip = self.options["listen_ip"]
+        if "listen_address" in self.options:
+            ip = self.options["listen_address"]
 
         self.usock.bind(port, ip)
         def _on_clean_interval():
@@ -611,6 +611,14 @@ class BaseRouter:
             result = self.address_map[address]
         return result
 
+def createServer(options, router):
+    s = DnsProxy(options, router)
+    return s
+
+def createBaseRouter(address_map):
+    r = BaseRouter(address_map)
+    return r
+
 def test_main():
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
     options = {"dns_host": "8.8.8.8", "listen_port": 2000}
@@ -629,6 +637,8 @@ def test_main():
         else: process.exit(code=0)
     rerun()
 
-exports.test_main = test_main
 exports.DnsProxy = DnsProxy
 exports.BaseRouter = BaseRouter
+exports.createServer = createServer
+exports.createBaseRouter = createBaseRouter
+exports.test_main = test_main

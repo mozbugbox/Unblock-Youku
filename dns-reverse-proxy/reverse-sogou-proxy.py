@@ -1,4 +1,3 @@
-#!/usr/bin/python
 # vim:fileencoding=utf-8:sw=4:et:syntax=python
 
 httpProxy = require("http-proxy")
@@ -17,6 +16,11 @@ MAX_ERROR_COUNT = {
 
 class ReverseSogouProxy:
     def __init__(self, options):
+        """
+            options:
+                listen_port: dns proxy port. default: 80
+                listen_address: dns proxy address. default: 0.0.0.0
+        """
         self.options = options
         self.sogou_renew_timeout = 10*60*1000
 
@@ -120,6 +124,7 @@ class ReverseSogouProxy:
         elif 'ETIMEDOUT' is err.code:
             self.timeout_count += 1
         self.renew_sogou_server()
+
     def _on_proxy_response(self, res):
         logger.debug("_on_proxy_response:", res)
         if res.statusCode == 404:
@@ -137,6 +142,8 @@ class ReverseSogouProxy:
 
     def start(self):
         opt = self.options
+        logger.info("Sogou proxy listens on %s:%d",
+                self.proxy_host, self.proxy_port)
         self.server.listen(self.proxy_port, self.proxy_host)
 
         # change sogou server periodically
@@ -145,6 +152,10 @@ class ReverseSogouProxy:
         sogou_renew_timer = setInterval(on_renew_timeout,
                 self.sogou_renew_timeout)
         sogou_renew_timer.unref()
+
+def createServer(options):
+    s = ReverseSogouProxy(options)
+    return s
 
 def test_main():
     def run_local_proxy():
@@ -170,5 +181,6 @@ def test_main():
         http.get(client_options, on_response)
     setTimeout(on_client_start , 12000)
 
-
+exports.ReverseSogouProxy = ReverseSogouProxy
+exports.createServer = createServer
 exports.test_main = test_main

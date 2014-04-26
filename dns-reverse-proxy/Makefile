@@ -6,11 +6,15 @@ ifeq (run, $(firstword $(MAKECMDGOALS)))
 	# use the rest as arguments for "run"
 	RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 	# ...and turn them into do-nothing targets
-    # $(eval $(RUN_ARGS):;	@:)
+	# $(eval $(RUN_ARGS):;	@:)
 	# NO! We actually want to depend on the tested files
 endif
 
-JS_TARGET = dns-proxy.js reverse-sogou-proxy.js utils.js
+JS_TARGET = dns-proxy.js \
+	    reverse-sogou-proxy.js \
+	    utils.js \
+
+
 RAPYDSCRIPT = $(TOP)/node_modules/.bin/rapydscript 
 
 all: $(JS_TARGET)
@@ -28,3 +32,5 @@ run: $(JS_TARGET)
 	done
 
 .PHONY: all run
+
+# vim:fileencoding=utf-8:sw=8:tabstop=8

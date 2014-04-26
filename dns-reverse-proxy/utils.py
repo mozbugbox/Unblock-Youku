@@ -1,10 +1,10 @@
-#!/usr/bin/python
 # vim:fileencoding=utf-8:sw=4:et:syntax=python
 
 SOCKET_TIMEOUT = 10*1000
 UAGENT_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11"
 
 http = require('http')
+url = require("url")
 shared_urls = require('../shared/urls')
 shared_tools = require('../shared/tools')
 sogou = require('../shared/sogou')
@@ -136,8 +136,28 @@ def filtered_request_headers(headers, forward_cookie):
 
     return ret_headers
 
+USER_DOMAIN_LIST = None
+def fetch_user_domain():
+    """Fetch a list of domains for the filtered ub.uku urls"""
+    nonlocal USER_DOMAIN_LIST
+    if USER_DOMAIN_LIST !== None:
+        return USER_DOMAIN_LIST
+
+    domain_dict = {}
+    for u in shared_urls.url_list:
+        # FIXME: can we do https proxy?
+        #if u.indexOf("https") is 0: continue
+        parsed_url = url.parse(u)
+        hostname = parsed_url.hostname
+        if hostname and hostname not in domain_dict:
+            domain_dict[hostname] = True
+    domain_list = Object.keys(domain_dict)
+    USER_DOMAIN_LIST = domain_list
+    return USER_DOMAIN_LIST
+
+exports.logger = logger
 exports.add_sogou_headers = add_sogou_headers
 exports.is_valid_url = is_valid_url
 exports.renew_sogou_server = renew_sogou_server
 exports.filtered_request_headers = filtered_request_headers
-exports.logger = logger
+exports.fetch_user_domain = fetch_user_domain
