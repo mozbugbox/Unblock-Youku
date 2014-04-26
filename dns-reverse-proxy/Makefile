@@ -11,6 +11,7 @@ ifeq (run, $(firstword $(MAKECMDGOALS)))
 endif
 
 JS_TARGET = dns-proxy.js \
+	    droxy.js \
 	    reverse-sogou-proxy.js \
 	    utils.js \
 

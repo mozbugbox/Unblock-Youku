@@ -3,6 +3,56 @@ About
 The file in this directory is a reverse http proxy server combined with a dns
 proxy server.
 
+Disclaimer
+==========
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Privileged Port
+===============
+When running the server, if you see errors like this:
+```
+{ [Error: bind EACCES] code: 'EACCES', errno: 'EACCES', syscall: 'bind' }
+
+events.js:72
+        throw er; // Unhandled 'error' event
+              ^
+Error: listen EACCES
+    at errnoException (net.js:904:11)
+    at Server._listen2 (net.js:1023:19)
+    at listen (net.js:1064:10)
+    at net.js:1146:9
+    at dns.js:72:18
+    at process._tickCallback (node.js:415:13)
+    at Function.Module.runMain (module.js:499:11)
+    at startup (node.js:119:16)
+    at node.js:902:3
+```
+
+This is an error of `privileged ports`. Search internet for more detailed
+information.
+
+To solve it, there are a few ways:
+
+  * run the server under root or sudo
+  * use `setcap` to give all node.js script the port privilege
+  * suid the server script file and run with root privilege
+  * port-forward with iptables or alike
+  * some systemd capability setting if you are into systemd
+
+As you can see, running it under root is easier. But root is dangerous!
+
+Anyway, use your own judgement. We're not responsible for any damage caused
+by running the server. See the Disclaimer above.
+
 Hackinig
 ========
 The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
