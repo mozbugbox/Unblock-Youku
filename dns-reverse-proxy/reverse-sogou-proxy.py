@@ -141,19 +141,21 @@ class ReverseSogouProxy:
         self.renew_sogou_server()
 
     def _on_proxy_response(self, res):
-        #logger.debug("_on_proxy_response:", res)
-        if res.statusCode == 404:
+        if res.statusCode >= 400:
+            #logger.debug("_on_proxy_response:", res)
             via = res.headers["via"]
             if not via:
                 via = res.headers["Via"]
             if not via or via.indexOf("sogou-in.domain") < 0:
                 # someone crapped on our request, mostly chinacache
                 # 502: Bad Gateway
+                s = res.socket
+                logger.warn("We are fucked by man-in-the-middle:\n",
+                        res.headers, res.statusCode,
+                        s.remoteAddress + ":" + s.remotePort)
                 res.statusCode = 502
                 self.refuse_count += 1
                 self.renew_sogou_server()
-                logger.warn("We are fucked by man-in-the-middle:\n",
-                        res.headers, res.statusCode)
 
     def start(self):
         opt = self.options
@@ -173,6 +175,7 @@ def createServer(options):
     return s
 
 def test_main():
+    logger.set_level(logger.DEBUG)
     def run_local_proxy():
         proxy = httpProxy.createServer()
         def on_request(req, res):
