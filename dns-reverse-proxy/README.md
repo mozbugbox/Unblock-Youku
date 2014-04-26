@@ -53,6 +53,40 @@ As you can see, running it under root is easier. But root is dangerous!
 Anyway, use your own judgement. We're not responsible for any damage caused
 by running the server. See the Disclaimer above.
 
+Dependencies
+============
+
+Build Dependent
+---------------
+ * rapydscript
+
+Runtime Dependent
+-----------------
+ * http-proxy
+ * optimist
+
+Usage
+=====
+Install dependencies by
+```
+    npm install rapydscript http-proxy optimist
+```
+
+Compile rapydscripts to javascripts
+```
+    make
+```
+
+Run the server
+```sh
+    sudo nodejs droxy.js --help
+```
+
+Options can be save/load from a config file
+```sh
+    sudo nodejs droxy.js --config sample-config.json
+```
+
 Hackinig
 ========
 The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
@@ -65,4 +99,10 @@ RapydScript is much more python look alike.
 Let's just see how long before the author of Rapydscript lost his enthusiasm
 over maintaining the pre-compiler. Finger crossed.
 
+Testing
+-------
+To run the test_main() function in each javascript files, do
+```
+    make run myscript.js
+```
 
