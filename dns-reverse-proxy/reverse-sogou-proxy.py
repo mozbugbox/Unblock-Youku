@@ -23,10 +23,10 @@ class ReverseSogouProxy:
         self.sogou_port = 80
         self.proxy_host = "0.0.0.0"
         self.proxy_port = 80
-        if options["port"]:
-            self.proxy_port = options["port"]
-        if options["ip"]:
-            self.proxy_host = options["ip"]
+        if options["listen_port"]:
+            self.proxy_port = options["listen_port"]
+        if options["listen_address"]:
+            self.proxy_host = options["listen_address"]
 
         self.proxy = self.setup_proxy(options)
         self.server = self.setup_server(options)
@@ -154,7 +154,7 @@ def test_main():
         http.createServer(on_request).listen(9010)
 
     run_local_proxy()
-    options = {"port":8080, "ip":"127.0.0.1"}
+    options = {"listen_port":8080, "listen_address":"127.0.0.1"}
     s = ReverseSogouProxy(options)
     s.start()
 
