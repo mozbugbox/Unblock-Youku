@@ -5,6 +5,7 @@ UAGENT_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.
 
 http = require('http')
 url = require("url")
+EventEmitter = require("events").EventEmitter
 shared_urls = require('../shared/urls')
 shared_tools = require('../shared/tools')
 sogou = require('../shared/sogou')
@@ -68,50 +69,80 @@ def is_valid_url(target_url):
         return True
     return False
 
-def renew_sogou_server(callback, depth=0):
-    new_addr = sogou.new_sogou_proxy_addr();
+class SogouManager(EventEmitter):
+    """Provide active Sogou proxy"""
+    def __init__(self, dns_server):
+        self.dns_server = dns_server
 
-    if depth >= 10:
-        callback(new_addr)
-        return
+    def renew_sogou_server(self, depth=0):
+        new_addr = sogou.new_sogou_proxy_addr();
+        new_ip = None
 
-    headers = {
-        "Accept-Language": "en-US,en;q=0.8,zh-CN;q=0.6,zh;q=0.4,zh-TW;q=0.2",
-        "Accept-Encoding": "deflate",
-        "Accept": "text/html,application/xhtml+xml," +
-            "application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent": UAGENT_CHROME,
-        "Accept-Charset": "gb18030,utf-8;q=0.7,*;q=0.3"
-    }
-    options = {
-        host: new_addr,
-        headers: headers,
-    }
-
-    def on_response (res):
-        if 400 == res.statusCode:
-            callback(new_addr);
+        # use a give DNS to lookup ip of sogou server
+        if self.dns_server and not new_addr.match(/^\d\+{4}$/):
+            def _lookup_cb(name, ip):
+                addr_info = {
+                        "address": name,
+                        "ip": ip
+                        }
+                self.check_sogou_server(addr_info, depth)
+            self.dns_server.lookup(new_addr, _lookup_cb)
         else:
-            logger.warn('[ub.uku.js] statusCode for %s is unexpected: %d',
-                new_addr, res.statusCode)
-            renew_sogou_server(callback, depth + 1)
-    req = http.request(options, on_response)
+            addr_info = {"address": new_addr}
+            self.check_sogou_server(addr_info, depth)
 
-    # http://goo.gl/G2CoU
+    def check_sogou_server(self, addr_info, depth=0):
+        """check validity of proxy.
+        emit "renew-address" on success
+        """
+        if depth >= 10:
+            self.emit("renew-address", addr_info)
+            return
 
-    def on_socket(socket):
-        def on_socket_timeout():
-            req.abort()
-            logger.warn('[ub.uku.js] Timeout for %s. Aborted.', new_addr)
-        socket.setTimeout(SOCKET_TIMEOUT, on_socket_timeout)
+        new_addr = addr_info["address"]
+        new_ip = addr_info["ip"]
 
-    req.on('socket', on_socket)
+        headers = {
+            "Accept-Language": "en-US,en;q=0.8,zh-CN;q=0.6,zh;q=0.4,zh-TW;q=0.2",
+            "Accept-Encoding": "deflate",
+            "Accept": "text/html,application/xhtml+xml," +
+                "application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": UAGENT_CHROME,
+            "Accept-Charset": "gb18030,utf-8;q=0.7,*;q=0.3"
+        }
 
-    def on_error(err):
-        logger.warn('[ub.uku.js] Error when testing %s: %s', new_addr, err)
-        renew_sogou_server(callback, depth + 1);
-    req.on('error', on_error)
-    req.end()
+        options = {
+            host: new_ip or new_addr,
+            headers: headers,
+        }
+        logger.debug("check sogou adderss:", addr_info, options.host)
+
+        def on_response (res):
+            if 400 == res.statusCode:
+                self.emit("renew-address", addr_info)
+            else:
+                logger.warn('[ub.uku.js] statusCode for %s is unexpected: %d',
+                    new_addr, res.statusCode)
+                self.renew_sogou_server(depth + 1)
+        req = http.request(options, on_response)
+
+        # http://goo.gl/G2CoU
+        def on_socket(socket):
+            def on_socket_timeout():
+                req.abort()
+                logger.warn('[ub.uku.js] Timeout for %s. Aborted.', new_addr)
+            socket.setTimeout(SOCKET_TIMEOUT, on_socket_timeout)
+        req.on('socket', on_socket)
+
+        def on_error(err):
+            logger.warn('[ub.uku.js] Error when testing %s: %s', new_addr, err)
+            self.renew_sogou_server(depth + 1);
+        req.on('error', on_error)
+        req.end()
+
+def createSogouManager(dns_server):
+    s = SogouManager(dns_server)
+    return s
 
 def filtered_request_headers(headers, forward_cookie):
     ret_headers = {}
@@ -158,6 +189,6 @@ def fetch_user_domain():
 exports.logger = logger
 exports.add_sogou_headers = add_sogou_headers
 exports.is_valid_url = is_valid_url
-exports.renew_sogou_server = renew_sogou_server
+exports.createSogouManager = createSogouManager
 exports.filtered_request_headers = filtered_request_headers
 exports.fetch_user_domain = fetch_user_domain

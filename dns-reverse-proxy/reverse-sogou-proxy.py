@@ -36,7 +36,16 @@ class ReverseSogouProxy:
         self.server = self.setup_server(options)
 
         self.reset_sogou_flags()
-        self.sogou_host = sogou.new_sogou_proxy_addr()
+        self.setup_sogou_manager()
+        self.sogou_info = {"address": sogou.new_sogou_proxy_addr()}
+
+    def setup_sogou_manager(self):
+        def _on_renew_address(addr_info):
+            logger.info("renewed sogou server:", addr_info)
+            self.sogou_info = addr_info
+            self.reset_sogou_flags()
+        self.sogou_manager = server_utils.createSogouManager()
+        self.sogou_manager.on("renew-address", _on_renew_address)
         self.renew_sogou_server(True)
 
     def reset_sogou_flags(self):
@@ -59,11 +68,7 @@ class ReverseSogouProxy:
         self.in_changing_sogou = True
         logger.debug("changing sogou server...")
 
-        def on_new_server(new_addr):
-            logger.info("renewed sogou server:", new_addr)
-            self.sogou_host = new_addr
-            self.reset_sogou_flags()
-        server_utils.renew_sogou_server(on_new_server)
+        self.sogou_manager.renew_sogou_server()
 
     def setup_proxy(self, options):
         """create the node proxy server instance"""
@@ -99,7 +104,7 @@ class ReverseSogouProxy:
             url = req.url
         to_use_proxy = server_utils.is_valid_url(url)
 
-        logger.debug("sogou:", self.sogou_host)
+        logger.debug("sogou:", self.sogou_info)
         logger.debug("do_proxy req.url:", url, to_use_proxy)
 
         # cannot forward cookie settings for other domains in redirect mode
@@ -108,10 +113,12 @@ class ReverseSogouProxy:
             forward_cookies = True
 
         if to_use_proxy:
-            server_utils.add_sogou_headers(req.headers, req.headers["host"]);
+            si = self.sogou_info
+            sogou_host = si["ip"] or si["address"]
+            server_utils.add_sogou_headers(req.headers, req.headers["host"])
             proxy_options = {
                     "target": {
-                        "host": self.sogou_host, "port": self.sogou_port,
+                        "host": sogou_host, "port": self.sogou_port,
                         #host: "localhost", port: 9010,
                     },
                     "toProxy": True,

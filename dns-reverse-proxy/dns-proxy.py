@@ -651,6 +651,9 @@ class DnsResolver(EventEmitter):
         self.callback_map = {}
 
     def lookup(self, domain, callback):
+        """Lookup ip of a domain
+        @callback: func(name, ip)
+        """
         client = dgram.createSocket("udp4")
         client.unref()
 
