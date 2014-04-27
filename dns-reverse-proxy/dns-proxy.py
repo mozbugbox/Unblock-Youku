@@ -721,6 +721,10 @@ class DnsResolver(EventEmitter):
 
         self.emit("resolved", name, ip)
 
+def createDnsResolver(address, port):
+    s = DnsResolver(address, port)
+    return s
+
 def test_main():
     log.set_level(log.DEBUG)
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
@@ -750,7 +754,7 @@ def test_main():
 
 exports.DnsProxy = DnsProxy
 exports.BaseRouter = BaseRouter
-exports.DnsResolver = DnsResolver
+exports.createDnsResolver = createDnsResolver
 exports.createServer = createServer
 exports.createBaseRouter = createBaseRouter
 exports.test_main = test_main

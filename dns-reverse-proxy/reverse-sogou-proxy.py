@@ -5,6 +5,7 @@ http = require("http")
 
 sogou = require('../shared/sogou')
 shared_tools = require('../shared/tools')
+dns_proxy = require("./dns-proxy")
 server_utils = require('./utils')
 logger = server_utils.logger
 
@@ -44,7 +45,10 @@ class ReverseSogouProxy:
             logger.info("renewed sogou server:", addr_info)
             self.sogou_info = addr_info
             self.reset_sogou_flags()
-        self.sogou_manager = server_utils.createSogouManager()
+        dns_resolver = None
+        if self.options["sogou_dns"]:
+            dns_resolver = dns_proxy.createDnsResolver("8.8.8.8")
+        self.sogou_manager = server_utils.createSogouManager(dns_resolver)
         self.sogou_manager.on("renew-address", _on_renew_address)
         self.renew_sogou_server(True)
 
@@ -67,7 +71,6 @@ class ReverseSogouProxy:
         if self.in_changing_sogou is True: return
         self.in_changing_sogou = True
         logger.debug("changing sogou server...")
-
         self.sogou_manager.renew_sogou_server()
 
     def setup_proxy(self, options):
@@ -190,7 +193,8 @@ def test_main():
         http.createServer(on_request).listen(9010)
 
     run_local_proxy()
-    options = {"listen_port":8080, "listen_address":"127.0.0.1"}
+    options = {"listen_port":8080, "listen_address":"127.0.0.1",
+            "sogou_dns": "8.8.4.4"}
     s = ReverseSogouProxy(options)
     s.start()
 

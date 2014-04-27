@@ -60,6 +60,8 @@ def run_servers(argv):
             }
     if argv["ip"]:
         sogou_proxy_options["listen_address"] = argv["ip"]
+    if argv["sogou_dns"]:
+        sogou_proxy_options["sogou_dns"] = argv["sogou_dns"]
 
     # https proxy
     #sogou_proxy_options_s = JSON.parse(JSON.stringify(sogou_proxy_options))
@@ -130,27 +132,32 @@ def parse_args():
 
     cmd_args = {
             "ip": {
-                "description": "local IP address to listens on",
+                "description": "local IP address to listen on",
                 "default": "0.0.0.0",
                 },
             "dns-host": {
                 "description"
                     : "remote dns host. default: first in /etc/resolve.conf",
                 },
+            "sogou-dns": {
+                "description"
+                    : "DNS used to lookup IP of sogou proxy servers",
+                "default": None,
+                },
             "config": {
                 "description": "load the given configuration file",
                 "default": config_path,
                 "alias": "c",
                 },
-            "help": {
-                "alias": "h",
-                "description": "print help message",
-                "boolean": True,
-                },
             "debug": {
                 "description": "debug mode",
                 "boolean": True,
                 "alias": "D",
+                },
+            "help": {
+                "alias": "h",
+                "description": "print help message",
+                "boolean": True,
                 },
             }
 
