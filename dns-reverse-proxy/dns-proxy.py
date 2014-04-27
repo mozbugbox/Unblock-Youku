@@ -4,6 +4,8 @@
 # https://tools.ietf.org/html/rfc5625
 dgram = require("dgram")
 EventEmitter = require("events").EventEmitter
+utils = require("./utils")
+log = utils.logger
 
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
 DEFAULT_TTL = 30 # time to live for our fake A record
@@ -196,6 +198,25 @@ def encode_ip(aip):
         buf[i] = parseInt(d)
     #console.log(buf.readUInt32BE(0))
     return buf.toString("base64", 0, 4)
+
+def decode_ip(eip):
+    """decode a base64 encoded uint32 ip to string ip"""
+    result = []
+    buf = Buffer(eip, "base64")
+    ip32 = buf.readUInt32BE(0)
+
+    while ip32 > 0:
+        b = ip32 % 0x100
+        ip32 = int(ip32 / 0x100)
+        result.push("" + b)
+    while len(result) < 4:
+        result.push("0")
+    result.reverse()
+    result = result.join(".")
+    #console.log(result)
+    return result
+
+#console.log(decode_ip("fwAAAQ=="))
 #console.log(encode_ip("127.0.0.1"), "fwAAAQ==")
 
 class DnsError(Error):
@@ -203,6 +224,8 @@ class DnsError(Error):
         self.name = Error
         self.message = msg
 
+# DNS message format:
+# http://www.zytrax.com/books/dns/ch15/
 class DnsMessage:
     def __init__(self, buf=None):
         self.id = 0
@@ -619,7 +642,84 @@ def createBaseRouter(address_map):
     r = BaseRouter(address_map)
     return r
 
+class DnsResolver(EventEmitter):
+    """Lookup a domain ip use a given DNS server"""
+    def __init__(self, dns_server, dns_port):
+        self.server = dns_server
+        self.port = dns_port or DNS_PORT
+        self.id_count = 1 # uniq dns message id
+        self.callback_map = {}
+
+    def lookup(self, domain, callback):
+        client = dgram.createSocket("udp4")
+        client.unref()
+
+        client = client
+        # match callback to DNS ID for lookup result
+        msg_id = self.id_count
+        self.id_count += 1
+        if callback:
+            self.callback_map[msg_id] = callback
+
+        def _on_msg(b, r):
+            self._on_message(b, r)
+            client.close()
+        client.on("message", _on_msg)
+
+        msg = self.create_a_question(msg_id, domain)
+        buf = Buffer(BUFFER_SIZE)
+        offset = msg.write_buf(buf)
+
+        log.debug("DNS lookup of %s @%s:%d", domain, self.server, self.port)
+        client.send(buf, 0, offset, self.port, self.server)
+
+    def create_a_question(self, msg_id, name):
+        """Create a DnsMessage with type "A" query question"""
+        msg = DnsMessage()
+        msg.id = msg_id
+
+        msg.flags = DNS_FLAGS.RD
+        msg.question = [{
+            "name": name,
+            "type": RECORD_TYPES.A,
+            "class": DNS_CLASSES.IN,
+            }]
+        return msg
+
+    def ip_from_a_message(self, dns_msg):
+        """retrieve lookup result ip from a DNS message"""
+        rec = None
+        for ans in dns_msg.answer:
+            if ans["type"] == RECORD_TYPES.A:
+                rec = ans
+                break
+        if rec is None:
+            return None
+        result = decode_ip(rec["rdata"])
+        return {"name": rec["name"], "ip": result}
+
+    def _on_message(self, buf, remote_info):
+        nonlocal BUFFER_SIZE
+        #console.warn("DnsUDPClient._on_message()")
+        if buf.length > BUFFER_SIZE:
+            BUFFER_SIZE = buf.length
+
+        msg = DnsMessage(buf)
+        name = None
+        ip = None
+        if result is not None:
+            result = self.ip_from_a_message(msg)
+            name = result["name"]
+            ip = result["ip"]
+
+        if self.callback_map[msg.id]:
+            self.callback_map[msg.id](name, ip)
+            del self.callback_map[msg.id]
+
+        self.emit("resolved", name, ip)
+
 def test_main():
+    log.set_level(log.DEBUG)
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
     options = {"dns_host": "8.8.8.8", "listen_port": 2000}
     DnsProxy(options, router).start()
@@ -634,11 +734,20 @@ def test_main():
             cmd = cmd_prefix + qs.pop()
             console.log("$", cmd)
             childp.exec(cmd, rerun)
-        else: process.exit(code=0)
+        #else: process.exit(code=0)
     rerun()
+
+    # test dns resolver
+    dr = DnsResolver("156.154.71.1")
+    def rcb(n, i):
+        console.log("resolver callback", n, i)
+    dr.lookup("h1.edu.bj.ie.sogou.com", rcb)
+    dr.lookup("h2.edu.bj.ie.sogou.com")
+    dr.on("resolved", rcb)
 
 exports.DnsProxy = DnsProxy
 exports.BaseRouter = BaseRouter
+exports.DnsResolver = DnsResolver
 exports.createServer = createServer
 exports.createBaseRouter = createBaseRouter
 exports.test_main = test_main
