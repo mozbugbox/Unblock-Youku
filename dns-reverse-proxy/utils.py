@@ -73,9 +73,20 @@ class SogouManager(EventEmitter):
     """Provide active Sogou proxy"""
     def __init__(self, dns_server):
         self.dns_server = dns_server
+        self.sogou_network = None
+
+    def new_proxy_address(self):
+        new_addr = sogou.new_sogou_proxy_addr();
+        if self.sogou_network:
+            good_net = new_addr.indexOf(self.sogou_network) >= 0
+            while not good_net:
+                new_addr = sogou.new_sogou_proxy_addr();
+                good_net = new_addr.indexOf(self.sogou_network) >= 0
+        return new_addr
 
     def renew_sogou_server(self, depth=0):
-        new_addr = sogou.new_sogou_proxy_addr();
+        new_addr = self.new_proxy_address()
+
         new_ip = None
 
         # use a give DNS to lookup ip of sogou server

@@ -57,11 +57,11 @@ def run_servers(argv):
     sogou_proxy_options = {
             "listen_port": 80,
             "listen_address": "127.0.0.1",
+            "sogou_dns": argv["sogou_dns"],
+            "sogou_network": argv["sogou_network"],
             }
     if argv["ip"]:
         sogou_proxy_options["listen_address"] = argv["ip"]
-    if argv["sogou_dns"]:
-        sogou_proxy_options["sogou_dns"] = argv["sogou_dns"]
 
     # https proxy
     #sogou_proxy_options_s = JSON.parse(JSON.stringify(sogou_proxy_options))
@@ -144,6 +144,11 @@ def parse_args():
                     : "DNS used to lookup IP of sogou proxy servers",
                 "default": None,
                 },
+            "sogou-network": {
+                "description"
+                    : 'choose between "edu" and "dxt"',
+                "default": None,
+                },
             "config": {
                 "description": "load the given configuration file",
                 "default": config_path,
@@ -173,6 +178,14 @@ def parse_args():
         if akey:
             del argv[akey]
     fix_keys(argv)
+
+    if argv["sogou_network"]:
+        sd = argv["sogou_network"]
+        if not (sd == "dxt" or sd == "edu"):
+            opt.showHelp()
+            log.error('*** Error: Bad value for option --sogou-network %s',
+                    sd)
+            process.exit(code=0)
 
     if argv.help:
         opt.showHelp()

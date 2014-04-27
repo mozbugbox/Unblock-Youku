@@ -41,15 +41,18 @@ class ReverseSogouProxy:
         self.sogou_info = {"address": sogou.new_sogou_proxy_addr()}
 
     def setup_sogou_manager(self):
-        def _on_renew_address(addr_info):
-            logger.info("renewed sogou server:", addr_info)
-            self.sogou_info = addr_info
-            self.reset_sogou_flags()
         dns_resolver = None
         if self.options["sogou_dns"]:
             dns_resolver = dns_proxy.createDnsResolver("8.8.8.8")
         self.sogou_manager = server_utils.createSogouManager(dns_resolver)
+        self.sogou_manager.sogou_network = self.options["sogou_network"]
+
+        def _on_renew_address(addr_info):
+            logger.info("renewed sogou server:", addr_info)
+            self.sogou_info = addr_info
+            self.reset_sogou_flags()
         self.sogou_manager.on("renew-address", _on_renew_address)
+
         self.renew_sogou_server(True)
 
     def reset_sogou_flags(self):
