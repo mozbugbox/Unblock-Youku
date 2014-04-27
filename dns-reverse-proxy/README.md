@@ -1,6 +1,6 @@
 About
 =====
-The file in this directory is a reverse http proxy server combined with a dns
+The file in this directory is a reverse HTTP proxy server combined with a DNS
 proxy server.
 
 Disclaimer
@@ -69,6 +69,7 @@ Usage
 =====
 Install dependencies by
 ```
+    cd dns-reverse-proxy/
     npm install rapydscript http-proxy optimist
 ```
 
@@ -87,6 +88,24 @@ Options can be save/load from a config file
     sudo nodejs droxy.js --config sample-config.json
 ```
 
+Now you can set the DNS of your computer to the local
+IP running the dns reverse proxy, and let sogou work
+its magic.
+
+```
+DNS Reverse Proxy(droxy) server with unblock-youku
+Usage:
+	nodejs ./droxy.js [--options]
+
+Options:
+  --ip          local IP address to listen on                         [default: "0.0.0.0"]
+  --dns-host    remote dns host. default: first in /etc/resolve.conf
+  --sogou-dns   DNS used to lookup IP of sogou proxy servers          [default: null]
+  --config, -c  load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+  --debug, -D   debug mode                                          
+  --help, -h    print help message                                  
+
+```
 Hackinig
 ========
 The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
