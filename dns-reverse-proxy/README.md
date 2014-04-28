@@ -93,18 +93,19 @@ IP running the dns reverse proxy, and let sogou work
 its magic.
 
 ```
+$ nodejs droxy.js -h
 DNS Reverse Proxy(droxy) server with unblock-youku
 Usage:
 	nodejs ./droxy.js [--options]
 
 Options:
-  --ip          local IP address to listen on                         [default: "0.0.0.0"]
-  --dns-host    remote dns host. default: first in /etc/resolve.conf
-  --sogou-dns   DNS used to lookup IP of sogou proxy servers          [default: null]
-  --config, -c  load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
-  --debug, -D   debug mode                                          
-  --help, -h    print help message                                  
-
+  --ip             local IP address to listen on                         [default: "0.0.0.0"]
+  --dns-host       remote dns host. default: first in /etc/resolve.conf
+  --sogou-dns      DNS used to lookup IP of sogou proxy servers          [default: null]
+  --sogou-network  choose between "edu" and "dxt"                        [default: null]
+  --config, -c     load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+  --debug, -D      debug mode                                          
+  --help, -h       print help message                                  
 ```
 Hackinig
 ========
