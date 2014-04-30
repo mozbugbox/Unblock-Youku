@@ -86,7 +86,9 @@ def expand_user(txt):
 def fix_keys(dobj):
     """replace "-" in dict keys to "_". """
     for k in Object.keys(dobj):
-        if "-" in k:
+        if k[0] == "#":
+            del dobj[k]
+        elif "-" in k:
             nk = k.replace("-", "_")
             dobj[nk] = dobj[k]
             del dobj[k]
@@ -101,7 +103,7 @@ def load_config(argv):
     # load config file as a javascript source file
     data = fs.readFileSync(cfile, "utf-8")
     # naiive fix dict with unquoted keys
-    data = data.replace(RegExp('([\'"])?([a-zA-Z0-9_-]+)([\'"])?:', "g"),
+    data = data.replace(RegExp('([\'"])?(#?[-_a-zA-Z0-9]+)([\'"])?:', "g"),
             '"$2": ')
     # extra comma before }]
     data = data.replace(/,(\s*[\}|\]])/g, '$1')
