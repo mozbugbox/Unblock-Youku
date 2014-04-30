@@ -698,8 +698,8 @@ class DnsResolver(EventEmitter):
                 break
         if rec is None:
             return None
-        result = decode_ip(rec["rdata"])
-        return {"name": rec["name"], "ip": result}
+        ip = decode_ip(rec["rdata"])
+        return {"name": rec["name"], "ip": ip}
 
     def _on_message(self, buf, remote_info):
         nonlocal BUFFER_SIZE
@@ -710,8 +710,8 @@ class DnsResolver(EventEmitter):
         msg = DnsMessage(buf)
         name = None
         ip = None
+        result = self.ip_from_a_message(msg)
         if result is not None:
-            result = self.ip_from_a_message(msg)
             name = result["name"]
             ip = result["ip"]
 

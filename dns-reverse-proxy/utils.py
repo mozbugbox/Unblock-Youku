@@ -74,6 +74,7 @@ class SogouManager(EventEmitter):
     def __init__(self, dns_server):
         self.dns_server = dns_server
         self.sogou_network = None
+        self.ip_pat = /^(\d+\.){3}\d+$/
 
     def new_proxy_address(self):
         new_addr = sogou.new_sogou_proxy_addr();
@@ -90,7 +91,7 @@ class SogouManager(EventEmitter):
         new_ip = None
 
         # use a give DNS to lookup ip of sogou server
-        if self.dns_server and not new_addr.match(/^\d\+{4}$/):
+        if self.dns_server and not self.ip_pat.test(new_addr):
             def _lookup_cb(name, ip):
                 addr_info = {
                         "address": name,
