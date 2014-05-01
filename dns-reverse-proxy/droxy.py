@@ -84,7 +84,7 @@ def expand_user(txt):
     return txt
 
 def fix_keys(dobj):
-    """replace "-" in dict keys to "_". """
+    """replace "-" in dict keys to "_" """
     for k in Object.keys(dobj):
         if k[0] == "#":
             del dobj[k]
@@ -100,7 +100,7 @@ def load_config(argv):
     if not (cfile and fs.existsSync(cfile)):
         return
 
-    # load config file as a javascript source file
+    # load config file as a JSON file
     data = fs.readFileSync(cfile, "utf-8")
     # naiive fix dict with unquoted keys
     data = data.replace(RegExp('([\'"])?(#?[-_a-zA-Z0-9]+)([\'"])?:', "g"),
@@ -187,7 +187,7 @@ def parse_args():
             opt.showHelp()
             log.error('*** Error: Bad value for option --sogou-network %s',
                     sd)
-            process.exit(code=0)
+            process.exit(code=2)
 
     if argv.help:
         opt.showHelp()

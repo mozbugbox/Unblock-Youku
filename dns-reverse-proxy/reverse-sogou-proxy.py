@@ -43,7 +43,9 @@ class ReverseSogouProxy:
     def setup_sogou_manager(self):
         dns_resolver = None
         if self.options["sogou_dns"]:
-            dns_resolver = dns_proxy.createDnsResolver("8.8.8.8")
+            sg_dns = self.options["sogou_dns"]
+            logger.info("Sogou proxy DNS solver:", sg_dns)
+            dns_resolver = dns_proxy.createDnsResolver(sg_dns)
         self.sogou_manager = server_utils.createSogouManager(dns_resolver)
         self.sogou_manager.sogou_network = self.options["sogou_network"]
 
@@ -133,7 +135,8 @@ class ReverseSogouProxy:
             proxy_options = {
                     "target": req.url,
             }
-        logger.debug("do_proxy headers before:", req.headers)
+
+        # logger.debug("do_proxy headers before:", req.headers)
         headers = server_utils.filtered_request_headers(
                 req.headers, forward_cookies)
         req.headers = headers
@@ -169,6 +172,8 @@ class ReverseSogouProxy:
                 res.statusCode = 502
                 self.refuse_count += 1
                 self.renew_sogou_server()
+        else:
+            logger.debug("_on_proxy_response headers:", res.headers)
 
     def start(self):
         opt = self.options

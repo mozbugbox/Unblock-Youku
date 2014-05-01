@@ -240,16 +240,19 @@ class DnsMessage:
             self.parse_buffer(buf)
 
     def parse_buffer(self, buf):
+        """Parse content in buf as a DNS message"""
         offset = 0
         offset = self.parse_header(buf, offset)
         offset = self.parse_records(buf, offset)
 
     def parse_header(self, buf, offset):
+        """Parse DNS headers"""
         self.id = buf.readUInt16BE(offset); offset += 2
         self.flags = buf.readUInt16BE(offset); offset += 2
         return offset
 
     def parse_records(self, buf, offset):
+        """Parse question/answser record of a DNS message"""
         question_count = buf.readUInt16BE(offset); offset += 2
         answer_count = buf.readUInt16BE(offset); offset += 2
         authority_count = buf.readUInt16BE(offset); offset += 2
@@ -527,6 +530,7 @@ class DnsProxy:
         return ret
 
     def remote_lookup(self, buf, dns_msg, rport, raddress):
+        """query on remote DNS server"""
         dns_client = DnsUDPClient(self.options)
         query_key = dns_msg.id + raddress + rport
         d = Date()
