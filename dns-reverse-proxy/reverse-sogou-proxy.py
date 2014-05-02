@@ -7,7 +7,7 @@ sogou = require('../shared/sogou')
 shared_tools = require('../shared/tools')
 dns_proxy = require("./dns-proxy")
 server_utils = require('./utils')
-logger = server_utils.logger
+log = server_utils.logger
 
 MAX_ERROR_COUNT = {
     "reset_count": 1,
@@ -21,9 +21,12 @@ class ReverseSogouProxy:
             options:
                 listen_port: dns proxy port. default: 80
                 listen_address: dns proxy address. default: 0.0.0.0
+                sogou_dns: dns used to lookup sogou server ip
+                sogou_network: sogou network: "dxt" or "edu"
         """
         self.options = options
         self.sogou_renew_timeout = 10*60*1000
+        self.request_id = 1
 
         self.sogou_port = 80
         self.proxy_host = "0.0.0.0"
@@ -41,16 +44,17 @@ class ReverseSogouProxy:
         self.sogou_info = {"address": sogou.new_sogou_proxy_addr()}
 
     def setup_sogou_manager(self):
+        """Manage which sogou proxy server we choose"""
         dns_resolver = None
         if self.options["sogou_dns"]:
             sg_dns = self.options["sogou_dns"]
-            logger.info("Sogou proxy DNS solver:", sg_dns)
+            log.info("Sogou proxy DNS solver:", sg_dns)
             dns_resolver = dns_proxy.createDnsResolver(sg_dns)
         self.sogou_manager = server_utils.createSogouManager(dns_resolver)
         self.sogou_manager.sogou_network = self.options["sogou_network"]
 
         def _on_renew_address(addr_info):
-            logger.info("renewed sogou server:", addr_info)
+            log.info("renewed sogou server:", addr_info)
             self.sogou_info = addr_info
             self.reset_sogou_flags()
         self.sogou_manager.on("renew-address", _on_renew_address)
@@ -75,7 +79,7 @@ class ReverseSogouProxy:
 
         if self.in_changing_sogou is True: return
         self.in_changing_sogou = True
-        logger.debug("changing sogou server...")
+        log.debug("changing sogou server...")
         self.sogou_manager.renew_sogou_server()
 
     def setup_proxy(self, options):
@@ -99,7 +103,6 @@ class ReverseSogouProxy:
     def do_proxy(self, req, res):
         """The handler of node proxy server"""
         proxy = self.proxy
-        req.headers["DNS-Reverse-Proxy"] = self.proxy_port
 
         # We fake hosting http pages. But we are actually a proxy.
         # A httpd server normally receives path to the GET/POST request, but
@@ -112,8 +115,11 @@ class ReverseSogouProxy:
             url = req.url
         to_use_proxy = server_utils.is_valid_url(url)
 
-        logger.debug("sogou:", self.sogou_info)
-        logger.debug("do_proxy req.url:", url, to_use_proxy)
+        log.debug("sogou:", self.sogou_info)
+        log.debug("do_proxy req.url:", url, to_use_proxy)
+        req.headers["X-Droxy-SG"] = "" + to_use_proxy
+        req.headers["X-Droxy-RID"] = "" + self.request_id
+        self.request_id += 1
 
         # cannot forward cookie settings for other domains in redirect mode
         forward_cookies = False
@@ -136,16 +142,16 @@ class ReverseSogouProxy:
                     "target": req.url,
             }
 
-        # logger.debug("do_proxy headers before:", req.headers)
+        # log.debug("do_proxy headers before:", req.headers)
         headers = server_utils.filtered_request_headers(
                 req.headers, forward_cookies)
         req.headers = headers
-        logger.debug("do_proxy headers:", headers)
+        log.debug("do_proxy[%s] headers:", headers["X-Droxy-Rid"], headers)
 
         proxy.web(req, res, proxy_options)
 
     def _on_proxy_error(self, err, req, res):
-        logger.debug("_on_proxy_error:", err)
+        log.debug("_on_proxy_error:", err)
         if 'ECONNRESET' is err.code:
             self.reset_count += 1
         elif 'ECONNREFUSED' is err.code:
@@ -157,27 +163,36 @@ class ReverseSogouProxy:
         self.renew_sogou_server()
 
     def _on_proxy_response(self, res):
+        #log.debug(res)
+        req = res.req
+        to_use_proxy = int(req._headers["x-droxy-sg"])
+        req_id = int(req._headers["x-droxy-rid"])
+        mitm = False
         if res.statusCode >= 400:
-            #logger.debug("_on_proxy_response:", res)
+            #log.debug("_on_proxy_response:", res)
             via = res.headers["via"]
+
             if not via:
                 via = res.headers["Via"]
-            if not via or via.indexOf("sogou-in.domain") < 0:
+            if (to_use_proxy == "true" and
+                    (not via or via.indexOf("sogou-in.domain") < 0)):
                 # someone crapped on our request, mostly chinacache
-                # 502: Bad Gateway
-                s = res.socket
-                logger.warn("We are fucked by man-in-the-middle:\n",
-                        res.headers, res.statusCode,
-                        s.remoteAddress + ":" + s.remotePort)
-                res.statusCode = 502
-                self.refuse_count += 1
-                self.renew_sogou_server()
+                mitm = True
+        if mitm is True:
+            s = res.socket
+            log.warn("We are fucked by man-in-the-middle[%d]:\n",
+                    req_id, res.headers, res.statusCode,
+                    s.remoteAddress + ":" + s.remotePort)
+            # 502: Bad Gateway
+            res.statusCode = 502
+            self.refuse_count += 1
+            self.renew_sogou_server()
         else:
-            logger.debug("_on_proxy_response headers:", res.headers)
+            log.debug("_on_proxy_response[%d] headers:", req_id,
+                    res.headers, res.statusCode)
 
     def start(self):
-        opt = self.options
-        logger.info("Sogou proxy listens on %s:%d",
+        log.info("Sogou proxy listens on %s:%d",
                 self.proxy_host, self.proxy_port)
         self.server.listen(self.proxy_port, self.proxy_host)
 
@@ -193,7 +208,7 @@ def createServer(options):
     return s
 
 def test_main():
-    logger.set_level(logger.DEBUG)
+    log.set_level(log.DEBUG)
     def run_local_proxy():
         proxy = httpProxy.createServer()
         def on_request(req, res):
@@ -209,9 +224,9 @@ def test_main():
     client_options = { "host": "127.0.0.1", "port": 8080,
         "path": "http://httpbin.org/ip", "headers": { "Host": "httpbin.org" } }
     # wait a few sec to get a valid sogou proxy ip first
-    logger.info("wait for a while...")
+    log.info("wait for a while...")
     def on_client_start():
-        logger.info("start download...")
+        log.info("start download...")
         def on_response(res):
             res.pipe(process.stdout)
 

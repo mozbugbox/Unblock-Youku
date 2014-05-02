@@ -103,25 +103,55 @@ Options:
   --dns-host       remote dns host. default: first in /etc/resolve.conf
   --sogou-dns      DNS used to lookup IP of sogou proxy servers          [default: null]
   --sogou-network  choose between "edu" and "dxt"                        [default: null]
+  --dns-no-relay   DNS proxy don't relay non-routed domain to upstream DNS
+  --dns-rate-limit DNS query rate limit per sec per IP. -1 = no limit    [default: 20]
   --config, -c     load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
   --debug, -D      debug mode                                          
   --help, -h       print help message                                  
 ```
+
+dns-no-relay
+------------
+This option is not needed if you run the server on local LAN network. It is
+used to protect the server from DoS attack when running on public network.
+
+With the option `--dns-no-relay`, only DNS queries for routed domain names are
+handled by the builtin DNS server. For other general domain name lookup, a
+`Refused` error message will be returned. Next, another DNS server will be used
+to query for the general domain names.
+
+When `--dns-no-relay` is used, in order to get proper DNS lookup for all the
+domain names, the client OS should have at least one backup DNS server in
+addition to the DNS proxy server.
+
+For example, in `/etc/resovle.conf`:
+
+```
+nameserver 192.168.1.5
+nameserver 8.8.4.4
+nameserver 8.8.8.8
+```
+
+Where the `192.168.1.5` is our DNS proxy server. The other 2 servers are backup
+servers for non-routed domain names. Of course, using DNS provided by ISP in
+general is preferred over ~evil~ public DNS like 8.8.8.8.
+
+
 Hackinig
 ========
 The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
-which is a pre-compiler for JavaScript like CoffeeScript. The syntax is basic
-Python with a few javascript concept.
+which is a pre-compiler for JavaScript, just like CoffeeScript. The syntax is
+basic Python with a few javascript concept.
 
 CoffeeScript syntax is just too much non-python to the taste of mine
-(mozbugbox).  RapydScript is much more python look alike.
+(mozbugbox). RapydScript is much more python look alike.
 
 Let's just see how long before the author of Rapydscript lost his enthusiasm
 over maintaining the pre-compiler. Finger crossed.
 
 Testing
 -------
-To run the test_main() function in each javascript files, do
+To run the `test_main()` function in each javascript files, do
 ```
     make run myscript.js
 ```

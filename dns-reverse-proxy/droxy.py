@@ -3,11 +3,11 @@
 path = require("path")
 fs = require("fs")
 
+dnsproxy = require("./dns-proxy")
+reversesogouproxy = require("./reverse-sogou-proxy")
 utils = require("./utils")
 log = utils.logger
 
-dnsproxy = require("./dns-proxy")
-reversesogouproxy = require("./reverse-sogou-proxy")
 
 appname = "ub.uku.droxy"
 
@@ -43,7 +43,9 @@ def run_servers(argv):
     # setup dns proxy
     dns_options = {
             "listen_address": "0.0.0.0",
-            "listen_port": 53
+            "listen_port": 53,
+            "dns_relay": not argv["dns_no_relay"],
+            "dns_rate_limit": int(argv["dns_rate_limit"]),
             }
     if argv["ip"]:
         dns_options["listen_address"] = argv["ip"]
@@ -89,7 +91,7 @@ def fix_keys(dobj):
         if k[0] == "#":
             del dobj[k]
         elif "-" in k:
-            nk = k.replace("-", "_")
+            nk = k.replace(/-/g, "_")
             dobj[nk] = dobj[k]
             del dobj[k]
 
@@ -150,6 +152,16 @@ def parse_args():
                 "description"
                     : 'choose between "edu" and "dxt"',
                 "default": None,
+                },
+            "dns-no-relay": {
+                "description"
+                    : "don't relay non-routed domain query to upstream DNS",
+                "boolean": True,
+                },
+            "dns-rate-limit": {
+                "description"
+                    : "DNS query rate limit per sec per IP. -1 = no limit",
+                "default": 20,
                 },
             "config": {
                 "description": "load the given configuration file",

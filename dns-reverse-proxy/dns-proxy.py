@@ -9,6 +9,8 @@ log = utils.logger
 
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
 DEFAULT_TTL = 30 # time to live for our fake A record
+DNS_RATE_LIMIT = 20 # rate limit: lookup/second
+DNS_DENY_TIMEOUT = 5*60 # in seconds
 
 # 8.8.8.8 google
 # 8.8.4.4 google
@@ -34,6 +36,33 @@ DNS_FLAGS = {
 }
 
 # https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+DNS_RCODES = {
+        "NoError": 0,
+        "FormErr": 1,
+        "ServFail": 2,
+        "NXDomain": 3,
+        "NotImp": 4,
+        "Refused": 5,
+        "YXDomain": 6,
+        "YXRRSet": 7,
+        "NXRRSet": 8,
+        "NotAuth": 9,
+        "NotAuth": 9,
+        "NotZone": 10,
+        #"Unassigned": 11-15,
+        "BADVERS": 16,
+        "BADSIG": 16,
+        "BADKEY": 17,
+        "BADTIME": 18,
+        "BADMODE": 19,
+        "BADNAME": 20,
+        "BADALG": 21,
+        "BADTRUNC": 22,
+        #"Unassigned": 23-3840,
+        #"Reserved": 3841-4095,
+        #"Unassigned": 4096-65534,
+        #"Reserved": 65535,
+}
 DNS_CLASSES = {
         IN: 1,
         CS: 2,
@@ -462,6 +491,73 @@ class DnsUDPClient(EventEmitter):
         self.timeout_id = -1
         self.emit("timeout")
 
+class RateLimiter:
+    """DNS lookup rate limiter
+       Limit DNS lookup rate per client, to prevent all kind of DNS DDoS
+    """
+    def __init__(self, options):
+        """
+            options:
+                rate-limit: lookup/sec
+                deny-timeout: timeout for reactive on denied IP
+        """
+        self.options = options
+        self.deny_timeout = DNS_DENY_TIMEOUT * 1000 # 5 minutes
+        if options["deny-timeout"]:
+            self.deny_timeout = options["deny-timeout"] * 1000
+        self.interval_reset = None
+        self.lookup_counts = {}
+        self.deny_map = {}
+        self.start()
+
+    def _do_reset(self):
+        """Reset rate count and deny queue"""
+        self.lookup_counts = {}
+        now = Date.now()
+        for k in Object.keys(self.deny_map):
+            time_stamp = self.deny_map[k]
+            if now > time_stamp:
+                del self.deny_map[k]
+
+    def over_limit(self, saddr):
+        """Check if the rate limit is over for a source address"""
+        if self.options["rate-limit"] < 0:
+            return False # no limit
+
+        if self.deny_map[saddr]:
+            return True
+
+        ret = False
+        lcount = self.lookup_counts[saddr] or 0
+        lcount += 1
+        self.lookup_counts[saddr] = lcount
+        if lcount > self.options["rate-limit"]:
+            ret = True
+            log.warn("DNS DoS:", saddr)
+            del self.lookup_counts[saddr]
+            self.deny_map[saddr] = Date.now() + self.deny_timeout
+        return ret
+
+    def start(self):
+        """start the periodic check"""
+        if self.options["rate-limit"] <= 0:
+            return
+        if self.interval_reset:
+            clearInterval(self.interval_reset)
+            self.interval_reset = None
+
+        def _do_reset():
+            self._do_reset()
+        self.interval_reset = setInterval(_do_reset, 1000) # 1 sec
+
+    def stop(self):
+        """stop the periodic check"""
+        if self.interval_reset:
+            clearInterval(self.interval_reset)
+            self.interval_reset = None
+        self.lookup_counts = {}
+        self.deny_map = {}
+
 class DnsProxy:
     def __init__(self, options, router=None):
         """Router is used to route local name to ip
@@ -470,6 +566,7 @@ class DnsProxy:
                 listen_address: dns proxy address. default: 0.0.0.0
                 dns_host: remote DNS server we do real DNS lookup.
                           default: 8.8.8.8
+                dns_rate_limit: dns lookup/second rate limit
             router: a router class to direct domain name to fake ip.
                     Should have a method router.lookup(domain_name)
                     return an ip address or None
@@ -482,6 +579,12 @@ class DnsProxy:
         if not options["dns_host"]:
             options["dns_host"] = DNS_DEFAULT_HOST
         self.options = options
+        rate_limit = self.options["dns_rate_limit"] or DNS_RATE_LIMIT
+        self.rate_limiter = RateLimiter({
+            "rate-limit": rate_limit,
+            "deny-timeout": DNS_DENY_TIMEOUT,
+            })
+
         self.query_map = {}
         self.usock = dgram.createSocket("udp4")
 
@@ -497,15 +600,21 @@ class DnsProxy:
 
     def _on_dns_message(self, buf, remote_info):
         #console.log("remote info:", remote_info)
+        raddress = remote_info.address
+        if self.rate_limiter.over_limit(raddress):
+            return
         nonlocal BUFFER_SIZE
         if buf.length > BUFFER_SIZE:
             BUFFER_SIZE = buf.length
-        dns_msg = DnsMessage(buf)
-        raddress = remote_info.address
+
         rport = remote_info.port
+        dns_msg = DnsMessage(buf)
         ret = self.local_router_lookup(dns_msg, rport, raddress)
         if ret is False:
-            self.remote_lookup(buf, dns_msg, rport, raddress)
+            if self.options["dns_relay"]:
+                self.remote_lookup(buf, dns_msg, rport, raddress)
+            else:
+                self.answer_refused(dns_msg, rport, raddress)
 
     def local_router_lookup(self, dns_msg, rport, raddress):
         """Short cut, if only an "A" query for routed domains,
@@ -524,6 +633,7 @@ class DnsProxy:
         if ret is True:
             send_msg = self.create_a_message(dns_msg.id, rec_name, ip)
             send_msg.question = dns_msg.question
+            log.debug("DNS local router:", send_msg.answer[0]["name"])
             buf = Buffer(BUFFER_SIZE)
             length = send_msg.write_buf(buf)
             self.send_response(buf, length, rport, raddress)
@@ -531,6 +641,7 @@ class DnsProxy:
 
     def remote_lookup(self, buf, dns_msg, rport, raddress):
         """query on remote DNS server"""
+        log.debug("DNS remote lookup:", dns_msg.question[0])
         dns_client = DnsUDPClient(self.options)
         query_key = dns_msg.id + raddress + rport
         d = Date()
@@ -542,17 +653,17 @@ class DnsProxy:
         dns_client.lookup(dns_msg)
 
     def _on_dns_error(self, err):
-        console.log(err)
+        log.error(err)
 
     def _on_dns_listening(self):
         addr = self.usock.address()
-        console.log("DNS proxy listens on %s:%d", addr.address, addr.port)
+        log.info("DNS proxy listens on %s:%d", addr.address, addr.port)
 
     def create_a_message(self, msg_id, name, ip):
         """Create a DnsMessage with type "A" query result"""
         msg = DnsMessage()
         msg.id = msg_id
-        msg.flags = DNS_FLAGS.QR | DNS_FLAGS.AA | DNS_FLAGS.RD | DNS_FLAGS.RA
+        msg.flags = DNS_FLAGS.QR | DNS_FLAGS.AA
         msg.answer = [{
             "name": name,
             "type": RECORD_TYPES.A,
@@ -597,6 +708,16 @@ class DnsProxy:
         if time_stamp in self.query_map:
             del self.query_map[time_stamp]
         self.send_response(buf, offset, rport, raddress)
+
+    def answer_refused(self, dns_message, rport, raddress):
+        """Send a Refused dns answer message to the client"""
+        log.debug("DNS Refused:", dns_message.question[0])
+        send_msg = DnsMessage()
+        send_msg.id = dns_message.id
+        send_msg.flags = DNS_FLAGS.QR | DNS_RCODES["Refused"]
+        buf = Buffer(BUFFER_SIZE)
+        length = send_msg.write_buf(buf)
+        self.send_response(buf, length, rport, raddress)
 
     def send_response(self, buf, length, rport, raddress):
         #console.warn("send_response:", rport, raddress)
@@ -706,6 +827,7 @@ class DnsResolver(EventEmitter):
         return {"name": rec["name"], "ip": ip}
 
     def _on_message(self, buf, remote_info):
+        """receive a DNS query result"""
         nonlocal BUFFER_SIZE
         #console.warn("DnsUDPClient._on_message()")
         if buf.length > BUFFER_SIZE:
