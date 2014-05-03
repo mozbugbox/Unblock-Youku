@@ -39,7 +39,36 @@ def load_dns_map(target_ip):
     #log.debug(dmap)
     return dmap
 
+def load_router_from_file(fname, dns_map):
+    """Load domain -> ip map from a JSON file"""
+    data = fs.readFileSync(fname, "utf-8")
+    # extra comma before }]
+    data = data.replace(/,(\s*[\}|\]])/g, '$1')
+    rdict = JSON.parse(data)
+    for k in Object.keys(rdict):
+        dns_map[k] = rdict[k]
+
+def load_extra_url_list(fname):
+    """Add extra url list to the shared urls"""
+    data = fs.readFileSync(fname, "utf-8")
+    data = data.replace(/,(\s*[\}|\]])/g, '$1')
+    url_list = JSON.parse(data)
+
+    shared_urls = require("../shared/urls.js")
+    url_regex = shared_urls.urls2regexs(url_list)
+    for u in url_list:
+        shared_urls.url_list.push(u)
+    for r in url_regex:
+        shared_urls.url_regex_list.push(r)
+
 def run_servers(argv):
+    if argv["extra_url_list"]:
+        fname_extra_ul = argv["extra_url_list"]
+        if not (fname_extra_ul and fs.existsSync(fname_extra_ul)):
+            log.error("extra url filter file not found:", fname_extra_ul)
+            process.exit(2)
+        load_extra_url_list(fname_extra_ul)
+
     # setup dns proxy
     dns_options = {
             "listen_address": "0.0.0.0",
@@ -72,6 +101,14 @@ def run_servers(argv):
     log.debug("sogou_proxy_options:", sogou_proxy_options)
 
     dns_map = load_dns_map(sogou_proxy_options["listen_address"])
+    if argv["dns_extra_router"]:
+        fname_extra_rt = argv["dns_extra_router"]
+        if not (fname_extra_rt and fs.existsSync(fname_extra_rt)):
+            log.error("extra router file not found:", fname_extra_rt)
+            process.exit(2)
+        else:
+            load_router_from_file(fname_extra_rt, dns_map)
+    #log.debug("dns_map:", dns_map)
 
     drouter = dnsproxy.createBaseRouter(dns_map)
     dproxy = dnsproxy.createServer(dns_options, drouter)
@@ -153,6 +190,16 @@ def parse_args():
                     : 'choose between "edu" and "dxt"',
                 "default": None,
                 },
+            "extra-url-list": {
+                "description"
+                    : "Load extra url redirect list from a JSON file",
+                },
+            /* Advanced usage
+            "dns-extra-router": {
+                "description"
+                    : "Load extra domain -> ip map for DNS from a JSON file",
+                },
+            */
             "dns-no-relay": {
                 "description"
                     : "don't relay non-routed domain query to upstream DNS",
