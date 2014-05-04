@@ -49,7 +49,9 @@ def load_router_from_file(fname, dns_map):
         dns_map[k] = rdict[k]
 
 def load_extra_url_list(fname):
-    """Add extra url list to the shared urls"""
+    """Add extra url list to the shared urls
+    The input file is a JSON file with a single array of url pattern strings
+    """
     data = fs.readFileSync(fname, "utf-8")
     data = data.replace(/,(\s*[\}|\]])/g, '$1')
     url_list = JSON.parse(data)
@@ -262,4 +264,7 @@ def main():
     log.debug("with config:", argv)
     run_servers(argv)
 
-main()
+if require.main is JS("module"):
+    main()
+
+exports.main = main

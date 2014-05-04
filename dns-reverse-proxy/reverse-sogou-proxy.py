@@ -207,7 +207,8 @@ def createServer(options):
     s = ReverseSogouProxy(options)
     return s
 
-def test_main():
+def main():
+    """Run test"""
     log.set_level(log.DEBUG)
     def run_local_proxy():
         proxy = httpProxy.createServer()
@@ -233,6 +234,8 @@ def test_main():
         http.get(client_options, on_response)
     setTimeout(on_client_start , 12000)
 
+if require.main is JS("module"):
+    main()
+
 exports.ReverseSogouProxy = ReverseSogouProxy
 exports.createServer = createServer
-exports.test_main = test_main

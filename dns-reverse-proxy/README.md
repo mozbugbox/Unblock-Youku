@@ -99,15 +99,17 @@ Usage:
 	nodejs ./droxy.js [--options]
 
 Options:
-  --ip             local IP address to listen on                         [default: "0.0.0.0"]
-  --dns-host       remote dns host. default: first in /etc/resolve.conf
-  --sogou-dns      DNS used to lookup IP of sogou proxy servers          [default: null]
-  --sogou-network  choose between "edu" and "dxt"                        [default: null]
-  --dns-no-relay   DNS proxy don't relay non-routed domain to upstream DNS
-  --dns-rate-limit DNS query rate limit per sec per IP. -1 = no limit    [default: 20]
-  --config, -c     load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
-  --debug, -D      debug mode                                          
-  --help, -h       print help message                                  
+  --ip              local IP address to listen on                         [default: "0.0.0.0"]
+  --dns-host        remote dns host. default: first in /etc/resolve.conf
+  --sogou-dns       DNS used to lookup IP of sogou proxy servers          [default: null]
+  --sogou-network   choose between "edu" and "dxt"                        [default: null]
+  --extra-url-list  Load extra url redirect list from a JSON file       
+  --dns-no-relay    don't relay non-routed domain query to upstream DNS 
+  --dns-rate-limit  DNS query rate limit per sec per IP. -1 = no limit    [default: 20]
+  --config, -c      load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+  --debug, -D       debug mode                                          
+  --help, -h        print help message                                  
+
 ```
 
 dns-no-relay
@@ -136,6 +138,15 @@ Where the `192.168.1.5` is our DNS proxy server. The other 2 servers are backup
 servers for non-routed domain names. Of course, using DNS provided by ISP in
 general is preferred over ~evil~ public DNS like 8.8.8.8.
 
+extra-url-list
+--------------
+Extra url patterns can be supplied with the `--extra-url-list` option. The
+option accept a argument as a JSON filename. The JSON file should contain a
+single array of url pattern strings, like:
+
+```json
+["http://example1.net/vid/*.cgi", "http://example2.net/vod/bin/*"]
+```
 
 Hackinig
 ========
@@ -148,11 +159,4 @@ CoffeeScript syntax is just too much non-python to the taste of mine
 
 Let's just see how long before the author of Rapydscript lost his enthusiasm
 over maintaining the pre-compiler. Finger crossed.
-
-Testing
--------
-To run the `test_main()` function in each javascript files, do
-```
-    make run myscript.js
-```
 

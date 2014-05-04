@@ -851,7 +851,8 @@ def createDnsResolver(address, port):
     s = DnsResolver(address, port)
     return s
 
-def test_main():
+def main():
+    """Run test"""
     log.set_level(log.DEBUG)
     router = BaseRouter({"www.sohu.com": "127.0.0.1"})
     options = {"dns_host": "8.8.8.8", "listen_port": 2000}
@@ -878,9 +879,11 @@ def test_main():
     dr.lookup("h2.edu.bj.ie.sogou.com")
     dr.on("resolved", rcb)
 
+if require.main is JS("module"):
+    main()
+
 exports.DnsProxy = DnsProxy
 exports.BaseRouter = BaseRouter
 exports.createDnsResolver = createDnsResolver
 exports.createServer = createServer
 exports.createBaseRouter = createBaseRouter
-exports.test_main = test_main
