@@ -5,12 +5,16 @@ UAGENT_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.
 
 http = require('http')
 url = require("url")
+dns = require("dns")
 EventEmitter = require("events").EventEmitter
 shared_urls = require('../shared/urls')
 shared_tools = require('../shared/tools')
 sogou = require('../shared/sogou')
 string_starts_with = shared_tools.string_starts_with;
 to_title_case = shared_tools.to_title_case
+
+# Possible IP prefixes of sogou proxy
+SOGOU_IPS = ["121.195.", "123.126.", "220.181."]
 
 class Logger:
     def __init__(self, level=None):
@@ -103,6 +107,26 @@ class SogouManager(EventEmitter):
             addr_info = {"address": new_addr}
             self.check_sogou_server(addr_info, depth)
 
+    def _on_check_sogou_success(self, addr_info):
+        """Called when sogou server check success"""
+        self.emit("renew-address", addr_info)
+
+        # check if ISP DNS hijacked sogou proxy domain name
+        domain = addr_info["address"]
+        def _on_lookup(err, addr, family):
+            valid = False
+            for sgip in SOGOU_IPS:
+                if addr.indexOf(sgip) is 0:
+                    valid = True
+                    break
+            if not valid:
+                logger.warn("WARN: sogou IP (%s -> %s) seems invalid",
+                        domain, addr)
+        if not addr_info["ip"]:
+            dns.lookup(addr_info["address"], 4, _on_lookup)
+        else:
+            _on_lookup(None, addr_info["ip"], None)
+
     def check_sogou_server(self, addr_info, depth=0):
         """check validity of proxy.
         emit "renew-address" on success
@@ -131,7 +155,7 @@ class SogouManager(EventEmitter):
 
         def on_response (res):
             if 400 == res.statusCode:
-                self.emit("renew-address", addr_info)
+                self._on_check_sogou_success(addr_info)
             else:
                 logger.warn('[ub.uku.js] statusCode for %s is unexpected: %d',
                     new_addr, res.statusCode)
