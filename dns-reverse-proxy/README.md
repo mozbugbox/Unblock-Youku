@@ -1,7 +1,12 @@
 About
 =====
 The file in this directory is a reverse HTTP proxy server combined with a DNS
-proxy server.
+proxy server (droxy).
+
+When pointing your DNS resolver to `droxy`, droxy will redirect _some_ domain
+names to itself. The droxy will then be able to transparently proxy the HTTP
+requests to the __redirected domain__ through the builtin HTTP proxy server.
+The builtin HTTP proxy will go through sogou proxy server by default.
 
 Disclaimer
 ==========
@@ -88,9 +93,8 @@ Options can be save/load from a config file
     sudo nodejs droxy.js --config sample-config.json
 ```
 
-Now you can set the DNS of your computer to the local
-IP running the dns reverse proxy, and let sogou work
-its magic.
+Now you can set the DNS of your computer to the local IP running the dns
+reverse proxy, and let sogou work its magic.
 
 ```
 $ nodejs droxy.js -h
@@ -99,16 +103,27 @@ Usage:
 	nodejs ./droxy.js [--options]
 
 Options:
-  --ip              local IP address to listen on                         [default: "0.0.0.0"]
-  --dns-host        remote dns host. default: first in /etc/resolve.conf
-  --sogou-dns       DNS used to lookup IP of sogou proxy servers          [default: null]
-  --sogou-network   choose between "edu" and "dxt"                        [default: null]
-  --extra-url-list  Load extra url redirect list from a JSON file       
-  --dns-no-relay    don't relay non-routed domain query to upstream DNS 
-  --dns-rate-limit  DNS query rate limit per sec per IP. -1 = no limit    [default: 20]
-  --config, -c      load the given configuration file                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
-  --debug, -D       debug mode                                          
-  --help, -h        print help message                                  
+  --ip              local IP address to listen on         [default: "0.0.0.0"]
+  --dns-host        remote dns host. default: first in /etc/resolve.conf      
+  --sogou-dns       DNS used to lookup IP of sogou proxy servers
+                                                               [default: null]
+  --sogou-network   choose between "edu" and "dxt"             [default: null]
+  --extra-url-list  load extra url redirect list from a JSON file             
+  --ext-ip          for public DNS, DNS proxy route to the given public IP.
+                    If set to "lookup", try to find the public IP through
+                    http://httpbin.org/ip. If a domain name is given, the IP
+                    will be lookup through DNS                 [default: null]
+  --dns-no-relay    don't relay un-routed domain query to upstream DNS        
+  --dns-rate-limit  DNS query rate limit per sec per IP. -1 = no limit
+                                                                 [default: 20]
+  --dns-port        local port for the DNS proxy to listen on. Useful with
+                    port forward                                 [default: 53]
+  --http-port       local port for the HTTP proxy to listen on. Useful with
+                    port forward                                 [default: 80]
+  --config, -c      load the given configuration file
+                    [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+  --debug, -D       debug mode                                                
+  --help, -h        print help message                                        
 
 ```
 
@@ -125,6 +140,10 @@ to query for the general domain names.
 When `--dns-no-relay` is used, in order to get proper DNS lookup for all the
 domain names, the client OS should have at least one backup DNS server in
 addition to the DNS proxy server.
+
+Actually, a backup DNS server is always a good idea, even with the DNS relay.
+In case the droxy server is down for whatever reason, a backup DNS will at
+least keep other internet activities intact.
 
 For example, in `/etc/resovle.conf`:
 
@@ -147,6 +166,25 @@ single array of url pattern strings, like:
 ```json
 ["http://example1.net/vid/*.cgi", "http://example2.net/vod/bin/*"]
 ```
+
+ext-ip
+------
+If a public DNS proxy server is setup behind a router, the `--ext-ip` option
+could be used to set the public IP address of the router.
+
+Then the port `53`(DNS) and port `80`(HTTPd) of the router need to be forwarded
+to the machine running the droxy server.
+
+There are some facilities to help with setup the droxy server with dynamic IP.
+
+If the parameter `lookup` is given to the `--ext-ip` option, the external IP
+will be looked up through `http://httpbin.org/ip` periodically.
+
+If a domain name instead of a IP is given to the the `--ext-ip` option, a DNS
+lookup for the domain name will be done to find the corresponding IP
+periodically.
+
+`--dns-port` and `--http-port` might be useful when port forward is done.
 
 Hackinig
 ========

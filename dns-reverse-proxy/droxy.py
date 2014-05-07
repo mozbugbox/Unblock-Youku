@@ -42,7 +42,7 @@ def load_dns_map(target_ip):
 def load_router_from_file(fname, dns_map):
     """Load domain -> ip map from a JSON file"""
     data = fs.readFileSync(fname, "utf-8")
-    # extra comma before }]
+    # fix loose JSON: extra comma before }]
     data = data.replace(/,(\s*[\}|\]])/g, '$1')
     rdict = JSON.parse(data)
     for k in Object.keys(rdict):
@@ -74,7 +74,7 @@ def run_servers(argv):
     # setup dns proxy
     dns_options = {
             "listen_address": "0.0.0.0",
-            "listen_port": 53,
+            "listen_port": argv["dns_port"],
             "dns_relay": not argv["dns_no_relay"],
             "dns_rate_limit": int(argv["dns_rate_limit"]),
             }
@@ -88,7 +88,7 @@ def run_servers(argv):
 
     # setup http proxy
     sogou_proxy_options = {
-            "listen_port": 80,
+            "listen_port": argv["http_port"],
             "listen_address": "127.0.0.1",
             "sogou_dns": argv["sogou_dns"],
             "sogou_network": argv["sogou_network"],
@@ -102,7 +102,9 @@ def run_servers(argv):
     #log.debug("sogou_proxy_options_s:", sogou_proxy_options_s)
     log.debug("sogou_proxy_options:", sogou_proxy_options)
 
-    dns_map = load_dns_map(sogou_proxy_options["listen_address"])
+    target_ip = argv["ext_ip"] or sogou_proxy_options["listen_address"]
+    dns_map = load_dns_map(target_ip)
+
     if argv["dns_extra_router"]:
         fname_extra_rt = argv["dns_extra_router"]
         if not (fname_extra_rt and fs.existsSync(fname_extra_rt)):
@@ -113,6 +115,11 @@ def run_servers(argv):
     #log.debug("dns_map:", dns_map)
 
     drouter = dnsproxy.createBaseRouter(dns_map)
+
+    ip_pat = /^(\d+\.){3}\d+$/
+    if not ip_pat.test(target_ip):
+        drouter.replace_target(target_ip)
+
     dproxy = dnsproxy.createServer(dns_options, drouter)
     sproxy = reversesogouproxy.createServer(sogou_proxy_options)
     dproxy.start()
@@ -194,23 +201,44 @@ def parse_args():
                 },
             "extra-url-list": {
                 "description"
-                    : "Load extra url redirect list from a JSON file",
+                    : "load extra url redirect list from a JSON file",
                 },
             /* Advanced usage
             "dns-extra-router": {
                 "description"
-                    : "Load extra domain -> ip map for DNS from a JSON file",
+                    : "load extra domain -> ip map for DNS from a JSON file",
                 },
             */
+            "ext-ip": {
+                "description": \
+                    'for public DNS, the DNS proxy route to the given ' +
+                    'public IP. If set to "lookup", try to find the ' +
+                    'public IP through http://httpbin.org/ip. If a ' +
+                    'domain name is given, the IP will be lookup ' +
+                    'through DNS',
+                "default": None,
+                },
             "dns-no-relay": {
                 "description"
-                    : "don't relay non-routed domain query to upstream DNS",
+                    : "don't relay un-routed domain query to upstream DNS",
                 "boolean": True,
                 },
             "dns-rate-limit": {
                 "description"
                     : "DNS query rate limit per sec per IP. -1 = no limit",
                 "default": 20,
+                },
+            "dns-port": {
+                "description"
+                    : "local port for the DNS proxy to listen on. " +
+                      "Useful with port forward",
+                "default": 53,
+                },
+            "http-port": {
+                "description"
+                    : "local port for the HTTP proxy to listen on. " +
+                      "Useful with port forward",
+                "default": 80,
                 },
             "config": {
                 "description": "load the given configuration file",
@@ -231,7 +259,7 @@ def parse_args():
 
     opt = optimist.usage(
         "DNS Reverse Proxy(droxy) server with unblock-youku\n" +
-        "Usage:\n\t$0 [--options]", cmd_args)
+        "Usage:\n\t$0 [--options]", cmd_args).wrap(78)
 
     argv = opt.argv
     # remove alias entries

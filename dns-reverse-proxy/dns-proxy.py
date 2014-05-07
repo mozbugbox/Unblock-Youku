@@ -3,6 +3,7 @@
 # RFC5625: DNS Proxy Implementation Guidelines
 # https://tools.ietf.org/html/rfc5625
 dgram = require("dgram")
+dns = require("dns")
 EventEmitter = require("events").EventEmitter
 utils = require("./utils")
 log = utils.logger
@@ -633,7 +634,7 @@ class DnsProxy:
         if ret is True:
             send_msg = self.create_a_message(dns_msg.id, rec_name, ip)
             send_msg.question = dns_msg.question
-            log.debug("DNS local router:", send_msg.answer[0]["name"])
+            log.debug("DNS local router:", send_msg.answer[0]["name"], raddress)
             buf = Buffer(BUFFER_SIZE)
             length = send_msg.write_buf(buf)
             self.send_response(buf, length, rport, raddress)
@@ -641,7 +642,7 @@ class DnsProxy:
 
     def remote_lookup(self, buf, dns_msg, rport, raddress):
         """query on remote DNS server"""
-        log.debug("DNS remote lookup:", dns_msg.question[0])
+        log.debug("DNS remote lookup:", dns_msg.question[0], raddress)
         dns_client = DnsUDPClient(self.options)
         query_key = dns_msg.id + raddress + rport
         d = Date()
@@ -711,7 +712,7 @@ class DnsProxy:
 
     def answer_refused(self, dns_message, rport, raddress):
         """Send a Refused dns answer message to the client"""
-        log.debug("DNS Refused:", dns_message.question[0])
+        log.debug("DNS Refused:", dns_message.question[0], raddress)
         send_msg = DnsMessage()
         send_msg.id = dns_message.id
         send_msg.flags = DNS_FLAGS.QR | DNS_RCODES["Refused"]
@@ -750,13 +751,48 @@ class BaseRouter:
     """
     def __init__(self, address_map):
         self.address_map = address_map
+        self.check_timeout = 10*60*1000 # 10 minutes
+        self.replace = None
+        self.check_iid = None # check setInterval id
+
+    def _on_interval(self):
+        """lookup replace target IP and set it"""
+        target = self.replace[0]
+        def _on_public_ip(public_ip):
+            if public_ip != self.replace[1]:
+                self.replace[1] = public_ip
+                log.debug("public_ip:", self.replace)
+        if target == "lookup":
+            utils.get_public_ip(_on_public_ip)
+        else: # domain name, do dns lookup
+            dns.lookup(target, def (err, addr, fam): _on_public_ip(addr);)
+
+    def replace_target(self, repl):
+        """Set replace pattern in the router target.
+        target which matches the repl will be replaced by the true IP
+
+        @repl: can be the string "lookup" or a string of domain name
+        """
+        self.replace = [repl, None]
+        self._on_interval() # check immediately
+        if not self.check_iid:
+            def _on_interval():
+                self._on_interval()
+            self.check_iid = setInterval(_on_interval, self.check_timeout)
+
     def set(self, domain, ip):
         """Add a new domain => ip route"""
         self.address_map[domain] = ip
+
     def lookup(self, address):
+        """lookup ip of a given domain name"""
         result = None
         if address in self.address_map:
             result = self.address_map[address]
+
+        # do target replace
+        if self.replace is not None and result == self.replace[0]:
+            result = self.replace[1]
         return result
 
 def createServer(options, router):

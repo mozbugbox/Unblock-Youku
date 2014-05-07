@@ -222,9 +222,28 @@ def fetch_user_domain():
     USER_DOMAIN_LIST = domain_list
     return USER_DOMAIN_LIST
 
+def get_public_ip(cb):
+    """get public ip from http://httpbin.org/ip then call cb"""
+    def _on_ip_response(res):
+        content = ""
+        def _on_data(x):
+            nonlocal content
+            content += x.toString("utf-8")
+
+        def _on_end():
+            content_json = JSON.parse(content)
+            lookup_ip = content_json["origin"]
+            cb(lookup_ip)
+
+        res.on('data',_on_data)
+        res.on('end', _on_end)
+
+    http.get("http://httpbin.org/ip", _on_ip_response)
+
 exports.logger = logger
 exports.add_sogou_headers = add_sogou_headers
 exports.is_valid_url = is_valid_url
 exports.createSogouManager = createSogouManager
 exports.filtered_request_headers = filtered_request_headers
 exports.fetch_user_domain = fetch_user_domain
+exports.get_public_ip = get_public_ip
