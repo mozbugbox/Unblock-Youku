@@ -49,6 +49,7 @@ unblock_youku.common_urls = [
     'http://123.126.48.47/*',
     'http://123.126.48.48/*',
 
+    'http://vv.video.qq.com/*',
     'http://vv.video.qq.com/getvinfo*',
     'http://vv.video.qq.com/getinfo*',
     'http://tt.video.qq.com/getvinfo*',
@@ -121,6 +122,8 @@ unblock_youku.chrome_extra_urls = [
     'http://edge.v.iask.com/*',  // may be large files
 
     'http://pay.youku.com/buy/redirect.html*',
+    'http://pay.tudou.com/buy/redirect.html*',
+    'http://aid.video.qq.com/fcgi-bin/userip?*',
     'http://pay.video.qq.com/fcgi-bin/paylimit*',
 
     'http://play.baidu.com/*',
@@ -141,6 +144,7 @@ unblock_youku.chrome_extra_urls = [
     'http://www.songtaste.com/*',
     'http://songtaste.com/*',
     'http://www.yyets.com/*',
+    'http://mainv2.img.duomi.com/*',
     'http://imanhua.com/comic/*',
     'http://www.imanhua.com/comic/*',
     'http://imanhua.com/v2*',
@@ -150,7 +154,7 @@ unblock_youku.chrome_extra_urls = [
 // only for server
 
 unblock_youku.server_whitelist_urls = [
-    // those does not need to go throw proxy
+    // those does not need to go through proxy
     'http://*/ipad?file=/*'
 ];
 
@@ -202,10 +206,13 @@ unblock_youku.server_extra_urls = [
     'http://iplocation.geo.qiyi.com/cityjson',
     'http://sns.video.qq.com/tunnel/fcgi-bin/tunnel*',
     'http://v5.pc.duomi.com/single-ajaxsingle-isban*',
+
+    // the access control for https are per domain name
     'https://openapi.youku.com/*',  // see issue #118
     'https://61.135.196.99/*', //n-openapi.youku.com
     'https://220.181.185.150/*', //zw-openapi.youku.com
-    'https://httpbin.org/get',  // for testing
+    'https://httpbin.org/*',  // for testing
+
     // for MiBox iCNTV Authentication
     'http://tms.is.ysten.com:8080/yst-tms/login.action?*',
     // for 3rd party's DNS for Apple TV (see pull request #78)
