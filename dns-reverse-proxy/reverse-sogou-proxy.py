@@ -9,6 +9,8 @@ dns_proxy = require("./dns-proxy")
 server_utils = require('./utils')
 log = server_utils.logger
 
+HTTP_RATE_LIMIT = 10 # 5 proxy require/sec
+
 MAX_ERROR_COUNT = {
     "reset_count": 1,
     "refuse_count": 2,
@@ -38,6 +40,11 @@ class ReverseSogouProxy:
 
         self.proxy = self.setup_proxy(options)
         self.server = self.setup_server(options)
+
+        rate_limit = self.options["http_rate_limit"] or HTTP_RATE_LIMIT
+        self.rate_limiter = server_utils.createRateLimiter({
+            "rate-limit": rate_limit,
+            })
 
         self.reset_sogou_flags()
         self.setup_sogou_manager()
@@ -97,7 +104,17 @@ class ReverseSogouProxy:
         """create the standard node http server to accept request"""
         def on_request(req, res):
             self.do_proxy(req, res)
+
+        def _on_connection(sock):
+            self._on_server_connection(sock)
+
+        def _on_client_error(err, socket):
+            log.error("HTTP Server clientError:", err)
+
         server = http.createServer(on_request)
+        server.on("connection", _on_connection)
+        server.on("clientError", _on_client_error)
+
         return server
 
     def do_proxy(self, req, res):
@@ -146,12 +163,19 @@ class ReverseSogouProxy:
         headers = server_utils.filtered_request_headers(
                 req.headers, forward_cookies)
         req.headers = headers
-        log.debug("do_proxy[%s] headers:", headers["X-Droxy-Rid"], headers)
+        log.debug("do_proxy[%s] headers:", headers["X-Droxy-Rid"], headers,
+                req.socket.remoteAddress)
 
         proxy.web(req, res, proxy_options)
 
+    def _on_server_connection(self, sock):
+        """Prevent DoS"""
+        remote_addr = sock.remoteAddress
+        if self.rate_limiter.over_limit(remote_addr):
+            sock.destroy()
+
     def _on_proxy_error(self, err, req, res):
-        log.debug("_on_proxy_error:", err)
+        log.error("_on_proxy_error:", err, req.headers["host"], req.url)
         if 'ECONNRESET' is err.code:
             self.reset_count += 1
         elif 'ECONNREFUSED' is err.code:

@@ -103,27 +103,29 @@ Usage:
 	nodejs ./droxy.js [--options]
 
 Options:
-  --ip              local IP address to listen on         [default: "0.0.0.0"]
-  --dns-host        remote dns host. default: first in /etc/resolve.conf      
-  --sogou-dns       DNS used to lookup IP of sogou proxy servers
+  --ip               local IP address to listen on        [default: "0.0.0.0"]
+  --dns-host         remote dns host. default: first in /etc/resolve.conf     
+  --sogou-dns        DNS used to lookup IP of sogou proxy servers
                                                                [default: null]
-  --sogou-network   choose between "edu" and "dxt"             [default: null]
-  --extra-url-list  load extra url redirect list from a JSON file             
-  --ext-ip          for public DNS, DNS proxy route to the given public IP.
-                    If set to "lookup", try to find the public IP through
-                    http://httpbin.org/ip. If a domain name is given, the IP
-                    will be lookup through DNS                 [default: null]
-  --dns-no-relay    don't relay un-routed domain query to upstream DNS        
-  --dns-rate-limit  DNS query rate limit per sec per IP. -1 = no limit
+  --sogou-network    choose between "edu" and "dxt"            [default: null]
+  --extra-url-list   load extra url redirect list from a JSON file            
+  --ext-ip           for public DNS, the DNS proxy route to the given public
+                     IP. If set to "lookup", try to find the public IP
+                     through http://httpbin.org/ip. If a domain name is
+                     given, the IP will be lookup through DNS  [default: null]
+  --dns-no-relay     don't relay un-routed domain query to upstream DNS       
+  --dns-rate-limit   DNS query rate limit per sec per IP. -1 = no limit
+                                                                 [default: 25]
+  --dns-port         local port for the DNS proxy to listen on. Useful with
+                     port forward                                [default: 53]
+  --http-port        local port for the HTTP proxy to listen on. Useful with
+                     port forward                                [default: 80]
+  --http-rate-limit  HTTP proxy rate limit per sec per IP. -1 = no limit
                                                                  [default: 20]
-  --dns-port        local port for the DNS proxy to listen on. Useful with
-                    port forward                                 [default: 53]
-  --http-port       local port for the HTTP proxy to listen on. Useful with
-                    port forward                                 [default: 80]
-  --config, -c      load the given configuration file
-                    [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
-  --debug, -D       debug mode                                                
-  --help, -h        print help message                                        
+  --config, -c       load the given configuration file
+                   [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+  --debug, -D        debug mode                                               
+  --help, -h         print help message                                       
 
 ```
 

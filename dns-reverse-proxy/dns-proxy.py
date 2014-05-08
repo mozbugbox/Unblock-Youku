@@ -11,7 +11,6 @@ log = utils.logger
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
 DEFAULT_TTL = 30 # time to live for our fake A record
 DNS_RATE_LIMIT = 20 # rate limit: lookup/second
-DNS_DENY_TIMEOUT = 5*60 # in seconds
 
 # 8.8.8.8 google
 # 8.8.4.4 google
@@ -456,7 +455,10 @@ class DnsUDPClient(EventEmitter):
         client.unref()
         def _on_msg(b, r):
             self._on_message(b, r)
+        def _on_error(err):
+            log.error("Err on DnsUDPClient lookup:", err)
         client.on("message", _on_msg)
+        client.on("error", _on_error)
 
         if isinstance(msg, Buffer):
             buf = msg
@@ -492,73 +494,6 @@ class DnsUDPClient(EventEmitter):
         self.timeout_id = -1
         self.emit("timeout")
 
-class RateLimiter:
-    """DNS lookup rate limiter
-       Limit DNS lookup rate per client, to prevent all kind of DNS DDoS
-    """
-    def __init__(self, options):
-        """
-            options:
-                rate-limit: lookup/sec
-                deny-timeout: timeout for reactive on denied IP
-        """
-        self.options = options
-        self.deny_timeout = DNS_DENY_TIMEOUT * 1000 # 5 minutes
-        if options["deny-timeout"]:
-            self.deny_timeout = options["deny-timeout"] * 1000
-        self.interval_reset = None
-        self.lookup_counts = {}
-        self.deny_map = {}
-        self.start()
-
-    def _do_reset(self):
-        """Reset rate count and deny queue"""
-        self.lookup_counts = {}
-        now = Date.now()
-        for k in Object.keys(self.deny_map):
-            time_stamp = self.deny_map[k]
-            if now > time_stamp:
-                del self.deny_map[k]
-
-    def over_limit(self, saddr):
-        """Check if the rate limit is over for a source address"""
-        if self.options["rate-limit"] < 0:
-            return False # no limit
-
-        if self.deny_map[saddr]:
-            return True
-
-        ret = False
-        lcount = self.lookup_counts[saddr] or 0
-        lcount += 1
-        self.lookup_counts[saddr] = lcount
-        if lcount > self.options["rate-limit"]:
-            ret = True
-            log.warn("DNS DoS:", saddr)
-            del self.lookup_counts[saddr]
-            self.deny_map[saddr] = Date.now() + self.deny_timeout
-        return ret
-
-    def start(self):
-        """start the periodic check"""
-        if self.options["rate-limit"] <= 0:
-            return
-        if self.interval_reset:
-            clearInterval(self.interval_reset)
-            self.interval_reset = None
-
-        def _do_reset():
-            self._do_reset()
-        self.interval_reset = setInterval(_do_reset, 1000) # 1 sec
-
-    def stop(self):
-        """stop the periodic check"""
-        if self.interval_reset:
-            clearInterval(self.interval_reset)
-            self.interval_reset = None
-        self.lookup_counts = {}
-        self.deny_map = {}
-
 class DnsProxy:
     def __init__(self, options, router=None):
         """Router is used to route local name to ip
@@ -581,9 +516,8 @@ class DnsProxy:
             options["dns_host"] = DNS_DEFAULT_HOST
         self.options = options
         rate_limit = self.options["dns_rate_limit"] or DNS_RATE_LIMIT
-        self.rate_limiter = RateLimiter({
+        self.rate_limiter = utils.createRateLimiter({
             "rate-limit": rate_limit,
-            "deny-timeout": DNS_DENY_TIMEOUT,
             })
 
         self.query_map = {}
@@ -654,7 +588,7 @@ class DnsProxy:
         dns_client.lookup(dns_msg)
 
     def _on_dns_error(self, err):
-        log.error(err)
+        log.error("Err on dns proxy:", err)
 
     def _on_dns_listening(self):
         addr = self.usock.address()
@@ -759,7 +693,9 @@ class BaseRouter:
         """lookup replace target IP and set it"""
         target = self.replace[0]
         def _on_public_ip(public_ip):
-            if public_ip != self.replace[1]:
+            if not public_ip:
+                log.warn("Failed to find valid public ip:", self.replace)
+            elif public_ip != self.replace[1]:
                 self.replace[1] = public_ip
                 log.debug("public_ip:", self.replace)
         if target == "lookup":
@@ -828,7 +764,10 @@ class DnsResolver(EventEmitter):
         def _on_msg(b, r):
             self._on_message(b, r)
             client.close()
+        def _on_error(err):
+            log.error("Err on resolver lookup:", err)
         client.on("message", _on_msg)
+        client.on("error", _on_error)
 
         msg = self.create_a_question(msg_id, domain)
         buf = Buffer(BUFFER_SIZE)

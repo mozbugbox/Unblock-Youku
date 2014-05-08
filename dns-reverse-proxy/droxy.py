@@ -2,12 +2,12 @@
 
 path = require("path")
 fs = require("fs")
+net = require("net")
 
 dnsproxy = require("./dns-proxy")
 reversesogouproxy = require("./reverse-sogou-proxy")
 utils = require("./utils")
 log = utils.logger
-
 
 appname = "ub.uku.droxy"
 
@@ -92,6 +92,7 @@ def run_servers(argv):
             "listen_address": "127.0.0.1",
             "sogou_dns": argv["sogou_dns"],
             "sogou_network": argv["sogou_network"],
+            "http_rate_limit": int(argv["http_rate_limit"]),
             }
     if argv["ip"]:
         sogou_proxy_options["listen_address"] = argv["ip"]
@@ -116,8 +117,7 @@ def run_servers(argv):
 
     drouter = dnsproxy.createBaseRouter(dns_map)
 
-    ip_pat = /^(\d+\.){3}\d+$/
-    if not ip_pat.test(target_ip):
+    if not (net.isIPv4(target_ip) or net.isIPv6(target_ip)):
         drouter.replace_target(target_ip)
 
     dproxy = dnsproxy.createServer(dns_options, drouter)
@@ -226,7 +226,7 @@ def parse_args():
             "dns-rate-limit": {
                 "description"
                     : "DNS query rate limit per sec per IP. -1 = no limit",
-                "default": 20,
+                "default": 25,
                 },
             "dns-port": {
                 "description"
@@ -239,6 +239,11 @@ def parse_args():
                     : "local port for the HTTP proxy to listen on. " +
                       "Useful with port forward",
                 "default": 80,
+                },
+            "http-rate-limit": {
+                "description"
+                    : "HTTP proxy rate limit per sec per IP. -1 = no limit",
+                "default": 20,
                 },
             "config": {
                 "description": "load the given configuration file",

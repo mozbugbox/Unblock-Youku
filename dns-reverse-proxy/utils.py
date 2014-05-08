@@ -2,8 +2,10 @@
 
 SOCKET_TIMEOUT = 10*1000
 UAGENT_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11"
+RATE_LIMITER_DENY_TIMEOUT = 5*60 # in seconds
 
 http = require('http')
+net = require("net")
 url = require("url")
 dns = require("dns")
 EventEmitter = require("events").EventEmitter
@@ -78,7 +80,6 @@ class SogouManager(EventEmitter):
     def __init__(self, dns_server):
         self.dns_server = dns_server
         self.sogou_network = None
-        self.ip_pat = /^(\d+\.){3}\d+$/
 
     def new_proxy_address(self):
         new_addr = sogou.new_sogou_proxy_addr();
@@ -95,7 +96,7 @@ class SogouManager(EventEmitter):
         new_ip = None
 
         # use a give DNS to lookup ip of sogou server
-        if self.dns_server and not self.ip_pat.test(new_addr):
+        if self.dns_server and not net.isIPv4(new_addr):
             def _lookup_cb(name, ip):
                 addr_info = {
                         "address": name,
@@ -157,7 +158,7 @@ class SogouManager(EventEmitter):
             if 400 == res.statusCode:
                 self._on_check_sogou_success(addr_info)
             else:
-                logger.warn('[ub.uku.js] statusCode for %s is unexpected: %d',
+                logger.error('[ub.uku.js] statusCode for %s is unexpected: %d',
                     new_addr, res.statusCode)
                 self.renew_sogou_server(depth + 1)
         req = http.request(options, on_response)
@@ -166,15 +167,87 @@ class SogouManager(EventEmitter):
         def on_socket(socket):
             def on_socket_timeout():
                 req.abort()
-                logger.warn('[ub.uku.js] Timeout for %s. Aborted.', new_addr)
+                logger.error('[ub.uku.js] Timeout for %s. Aborted.', new_addr)
             socket.setTimeout(SOCKET_TIMEOUT, on_socket_timeout)
         req.on('socket', on_socket)
 
         def on_error(err):
-            logger.warn('[ub.uku.js] Error when testing %s: %s', new_addr, err)
+            logger.error('[ub.uku.js] Error when testing %s: %s', new_addr, err)
             self.renew_sogou_server(depth + 1);
         req.on('error', on_error)
         req.end()
+
+class RateLimiter:
+    """rate limiter
+       Limit access rate the a server per client. Prevent all kind of DDoS
+    """
+    def __init__(self, options):
+        """
+            options:
+                rate-limit: access/sec
+                deny-timeout: timeout for reactive on denied IP
+        """
+        self.options = options
+        self.deny_timeout = RATE_LIMITER_DENY_TIMEOUT * 1000 # millisec
+        if options["deny-timeout"]:
+            self.deny_timeout = options["deny-timeout"] * 1000
+        self.interval_reset = None
+        self.access_counts = {}
+        self.deny_map = {}
+        self.start()
+
+    def _do_reset(self):
+        """Reset rate count and deny queue"""
+        if Object.keys(self.access_counts) > 0:
+            self.access_counts = {}
+        now = Date.now()
+        for k in Object.keys(self.deny_map):
+            time_stamp = self.deny_map[k]
+            if now > time_stamp:
+                del self.deny_map[k]
+
+    def over_limit(self, saddr):
+        """Check if the rate limit is over for a source address"""
+        if self.options["rate-limit"] < 0:
+            return False # no limit
+
+        if self.deny_map[saddr]:
+            return True
+
+        ret = False
+        ac_count = self.access_counts[saddr] or 0
+        ac_count += 1
+        self.access_counts[saddr] = ac_count
+        if ac_count > self.options["rate-limit"]:
+            logger.warn("DoS Attack:", saddr)
+            ret = True
+            del self.access_counts[saddr]
+            self.deny_map[saddr] = Date.now() + self.deny_timeout
+        return ret
+
+    def start(self):
+        """start the periodic check"""
+        if self.options["rate-limit"] <= 0:
+            return
+        if self.interval_reset:
+            clearInterval(self.interval_reset)
+            self.interval_reset = None
+
+        def _do_reset():
+            self._do_reset()
+        self.interval_reset = setInterval(_do_reset, 1000) # 1 sec
+
+    def stop(self):
+        """stop the periodic check"""
+        if self.interval_reset:
+            clearInterval(self.interval_reset)
+            self.interval_reset = None
+        self.access_counts = {}
+        self.deny_map = {}
+
+def createRateLimiter(options):
+    rl = RateLimiter(options)
+    return rl
 
 def createSogouManager(dns_server):
     s = SogouManager(dns_server)
@@ -235,8 +308,12 @@ def get_public_ip(cb):
             lookup_ip = content_json["origin"]
             cb(lookup_ip)
 
+        def _on_error(err):
+            logger.error("Err on get public ip:", err)
+
         res.on('data',_on_data)
         res.on('end', _on_end)
+        res.on("error", _on_error)
 
     http.get("http://httpbin.org/ip", _on_ip_response)
 
@@ -244,6 +321,7 @@ exports.logger = logger
 exports.add_sogou_headers = add_sogou_headers
 exports.is_valid_url = is_valid_url
 exports.createSogouManager = createSogouManager
+exports.createRateLimiter = createRateLimiter
 exports.filtered_request_headers = filtered_request_headers
 exports.fetch_user_domain = fetch_user_domain
 exports.get_public_ip = get_public_ip
