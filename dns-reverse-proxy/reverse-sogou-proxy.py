@@ -25,7 +25,9 @@ class ReverseSogouProxy:
                 listen_address: dns proxy address. default: 0.0.0.0
                 sogou_dns: dns used to lookup sogou server ip
                 sogou_network: sogou network: "dxt" or "edu"
+                external_ip: optional public ip of a exit router
         """
+        self.banned = {} # banned IP
         self.options = options
         self.sogou_renew_timeout = 10*60*1000
         self.request_id = 1
@@ -45,6 +47,7 @@ class ReverseSogouProxy:
         self.rate_limiter = server_utils.createRateLimiter({
             "rate-limit": rate_limit,
             })
+        self.rate_limiter.set_name("HTTP Proxy")
 
         self.reset_sogou_flags()
         self.setup_sogou_manager()
@@ -119,20 +122,25 @@ class ReverseSogouProxy:
 
     def do_proxy(self, req, res):
         """The handler of node proxy server"""
+        host = req.headers["host"] or req.headers["Host"]
+        domain_map = server_utils.fetch_user_domain()
+        if not domain_map[host]:
+            self._handle_unknown_host(req, res)
+            return
+
         proxy = self.proxy
 
         # We fake hosting http pages. But we are actually a proxy.
         # A httpd server normally receives path to the GET/POST request, but
         # being a proxy, the request need to be absolute URI, not just path.
         if req.url.indexOf("http") is not 0:
-            host = req.headers["host"] or req.headers["Host"]
             url = "http://" + host + req.url
             req.url = url
         else:
             url = req.url
         to_use_proxy = server_utils.is_valid_url(url)
 
-        log.debug("sogou:", self.sogou_info)
+        #log.debug("sogou:", self.sogou_info)
         log.debug("do_proxy req.url:", url, to_use_proxy)
         req.headers["X-Droxy-SG"] = "" + to_use_proxy
         req.headers["X-Droxy-RID"] = "" + self.request_id
@@ -170,8 +178,8 @@ class ReverseSogouProxy:
 
     def _on_server_connection(self, sock):
         """Prevent DoS"""
-        remote_addr = sock.remoteAddress
-        if self.rate_limiter.over_limit(remote_addr):
+        raddress = sock.remoteAddress
+        if self.rate_limiter.over_limit(raddress) or self.banned[raddress]:
             sock.destroy()
 
     def _on_proxy_error(self, err, req, res):
@@ -214,6 +222,19 @@ class ReverseSogouProxy:
         else:
             log.debug("_on_proxy_response[%d] headers:", req_id,
                     res.headers, res.statusCode)
+
+    def _handle_unknown_host(self, req, res):
+        """In case we see an request with unknown/un-routed "host" """
+        # we don't serve pages with proxy and we are not public proxy
+        sock = req.socket
+        raddress = sock.remoteAddress
+        sock.destroy()
+        if (raddress == self.options["listen_address"] or
+                raddress == self.options["external_ip"]):
+            self.rate_limiter.add_deny(raddress)
+        else:
+            self.banned[raddress] = True
+        log.warn("DoS attack:", req.headers, req.url, raddress)
 
     def start(self):
         log.info("Sogou proxy listens on %s:%d",

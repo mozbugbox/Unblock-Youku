@@ -64,13 +64,55 @@ def add_sogou_headers(req_headers, hostname):
     req_headers['X-Sogou-Tag'] = sogou_tag
     req_headers['X-Forwarded-For'] = shared_tools.new_random_ip()
 
+class URLMatch:
+    def __init__(self, url_list, prefix_len):
+        """Speedup regex matching to a long list of urls
+
+        use prefix of the regex pattern as keys to category the url list
+        into groups
+        """
+        self.prefix_len = prefix_len or 15
+        self.regex_map = self.create_map(url_list, self.prefix_len)
+
+    def create_map(self, url_list, prefix_len):
+        """create a map between the prefix of urls to regex list"""
+        url_map = {}
+        for url in url_list:
+            k = url[0:prefix_len]
+            if k.indexOf("*") >= 0:
+                k = "any"
+            val_list = url_map[k] or []
+            if val_list.length is 0:
+                url_map[k] = val_list
+            val_list.push(url)
+        #logger.debug("url_map:", url_map)
+        regex_map = {}
+        for k in Object.keys(url_map):
+            regex_list = shared_urls.urls2regexs(url_map[k])
+            regex_map[k] = regex_list
+        return regex_map
+
+    def test(self, url):
+        k = url[0:self.prefix_len]
+        regex_list = self.regex_map[k] or self.regex_map["any"]
+        ret = False
+        for pattern in regex_list:
+            if pattern.test(url):
+                ret = True
+                break
+        return ret
+
+
+url_match = None
 def is_valid_url(target_url):
+    nonlocal url_match
+    if url_match is None:
+        url_match = URLMatch(shared_urls.url_list)
     for white_pattern in shared_urls.url_regex_whitelist:
         if white_pattern.test(target_url):
             return False
-    for url_pattern in shared_urls.url_regex_list:
-        if url_pattern.test(target_url):
-            return True
+    if url_match.test(target_url):
+        return True
     if string_starts_with(target_url, 'http://httpbin.org'):
         return True
     return False
@@ -188,6 +230,7 @@ class RateLimiter:
                 deny-timeout: timeout for reactive on denied IP
         """
         self.options = options
+        self.name = None
         self.deny_timeout = RATE_LIMITER_DENY_TIMEOUT * 1000 # millisec
         if options["deny-timeout"]:
             self.deny_timeout = options["deny-timeout"] * 1000
@@ -196,10 +239,13 @@ class RateLimiter:
         self.deny_map = {}
         self.start()
 
+    def set_name(self, name):
+        self.name = name
+
     def _do_reset(self):
         """Reset rate count and deny queue"""
-        if Object.keys(self.access_counts) > 0:
-            self.access_counts = {}
+        self.access_counts = {} # checking for empty creates more garbage
+
         now = Date.now()
         for k in Object.keys(self.deny_map):
             time_stamp = self.deny_map[k]
@@ -219,11 +265,18 @@ class RateLimiter:
         ac_count += 1
         self.access_counts[saddr] = ac_count
         if ac_count > self.options["rate-limit"]:
-            logger.warn("DoS Attack:", saddr)
+            msg = "DoS Attack:"
+            if self.name is not None:
+                msg = self.name + " " + msg
+            logger.warn(msg, saddr)
             ret = True
+            self.add_deny(saddr)
             del self.access_counts[saddr]
-            self.deny_map[saddr] = Date.now() + self.deny_timeout
         return ret
+
+    def add_deny(self, saddr):
+        """Add a source address to the deny map"""
+        self.deny_map[saddr] = Date.now() + self.deny_timeout
 
     def start(self):
         """start the periodic check"""
@@ -276,12 +329,12 @@ def filtered_request_headers(headers, forward_cookie):
 
     return ret_headers
 
-USER_DOMAIN_LIST = None
+USER_DOMAIN_MAP = None
 def fetch_user_domain():
     """Fetch a list of domains for the filtered ub.uku urls"""
-    nonlocal USER_DOMAIN_LIST
-    if USER_DOMAIN_LIST !== None:
-        return USER_DOMAIN_LIST
+    nonlocal USER_DOMAIN_MAP
+    if USER_DOMAIN_MAP is not None:
+        return USER_DOMAIN_MAP
 
     domain_dict = {}
     for u in shared_urls.url_list:
@@ -291,9 +344,8 @@ def fetch_user_domain():
         hostname = parsed_url.hostname
         if hostname and hostname not in domain_dict:
             domain_dict[hostname] = True
-    domain_list = Object.keys(domain_dict)
-    USER_DOMAIN_LIST = domain_list
-    return USER_DOMAIN_LIST
+    USER_DOMAIN_MAP = domain_dict
+    return USER_DOMAIN_MAP
 
 def get_public_ip(cb):
     """get public ip from http://httpbin.org/ip then call cb"""

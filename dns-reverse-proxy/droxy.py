@@ -29,9 +29,9 @@ def load_dns_map(target_ip):
     """Create a DNS router to map a list of domain name to a target ip"""
     if not target_ip:
         target_ip = "127.0.0.1"
-    domain_list = utils.fetch_user_domain()
+    domain_map = utils.fetch_user_domain()
     dmap = {}
-    for domain in domain_list:
+    for domain in Object.keys(domain_map):
         dmap[domain] = target_ip
 
     # our proxy test server
@@ -96,6 +96,8 @@ def run_servers(argv):
             }
     if argv["ip"]:
         sogou_proxy_options["listen_address"] = argv["ip"]
+    if argv["ext_ip"]:
+        sogou_proxy_options["external_ip"] = argv["ext_ip"]
 
     # https proxy
     #sogou_proxy_options_s = JSON.parse(JSON.stringify(sogou_proxy_options))

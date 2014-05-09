@@ -54,6 +54,7 @@ To solve it, there are a few ways:
   * some systemd capability setting if you are into systemd
 
 As you can see, running it under root is easier. But root is dangerous!
+Therefore don't run any server under root!!
 
 Anyway, use your own judgement. We're not responsible for any damage caused
 by running the server. See the Disclaimer above.

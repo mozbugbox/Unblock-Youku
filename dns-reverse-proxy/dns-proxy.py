@@ -9,7 +9,7 @@ utils = require("./utils")
 log = utils.logger
 
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
-DEFAULT_TTL = 30 # time to live for our fake A record
+DEFAULT_TTL = 600 # time to live for our fake A record, in seconds
 DNS_RATE_LIMIT = 20 # rate limit: lookup/second
 
 # 8.8.8.8 google
@@ -512,6 +512,8 @@ class DnsProxy:
             router = BaseRouter()
         self.timeout = 30 * 1000 # milliseconds
         self.router = router
+        self.banned = {}
+        self.banned_record_types = ["ANY", "TXT"]
         if not options["dns_host"]:
             options["dns_host"] = DNS_DEFAULT_HOST
         self.options = options
@@ -519,6 +521,7 @@ class DnsProxy:
         self.rate_limiter = utils.createRateLimiter({
             "rate-limit": rate_limit,
             })
+        self.rate_limiter.set_name("DNS Proxy")
 
         self.query_map = {}
         self.usock = dgram.createSocket("udp4")
@@ -536,7 +539,7 @@ class DnsProxy:
     def _on_dns_message(self, buf, remote_info):
         #console.log("remote info:", remote_info)
         raddress = remote_info.address
-        if self.rate_limiter.over_limit(raddress):
+        if self.rate_limiter.over_limit(raddress) or self.banned[raddress]:
             return
         nonlocal BUFFER_SIZE
         if buf.length > BUFFER_SIZE:
@@ -544,6 +547,19 @@ class DnsProxy:
 
         rport = remote_info.port
         dns_msg = DnsMessage(buf)
+
+        # Drop all the DNS.ANY questions. It's just stupid
+        for q in dns_msg.question:
+            for btype in self.banned_record_types:
+                if q["type"] == RECORD_TYPES[btype]:
+                    self.banned[raddress] = True
+                    log.warn("DNS Proxy DoS (%s):", btype, raddress, q)
+                    return
+            if q["class"] is not DNS_CLASSES.IN:
+                self.banned[raddress] = True
+                log.warn("DNS Proxy DoS bad class:", raddress, q)
+                return
+
         ret = self.local_router_lookup(dns_msg, rport, raddress)
         if ret is False:
             if self.options["dns_relay"]:
