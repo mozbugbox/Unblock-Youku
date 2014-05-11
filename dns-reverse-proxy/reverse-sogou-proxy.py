@@ -1,7 +1,9 @@
 # vim:fileencoding=utf-8:sw=4:et:syntax=python
+# Reverse proxy server through the sogou proxy server
 
 httpProxy = require("http-proxy")
 http = require("http")
+EventEmitter = require("events").EventEmitter
 
 sogou = require('../shared/sogou')
 shared_tools = require('../shared/tools')
@@ -9,7 +11,7 @@ dns_proxy = require("./dns-proxy")
 server_utils = require('./utils')
 log = server_utils.logger
 
-HTTP_RATE_LIMIT = 10 # 5 proxy require/sec
+HTTP_RATE_LIMIT = 10 # 10 proxy request/sec
 
 MAX_ERROR_COUNT = {
     "reset_count": 1,
@@ -17,7 +19,10 @@ MAX_ERROR_COUNT = {
     "timeout_count": 4,
 }
 
-class ReverseSogouProxy:
+@external
+class EventEmitter:
+    pass
+class ReverseSogouProxy(EventEmitter):
     def __init__(self, options):
         """
             options:
@@ -26,10 +31,13 @@ class ReverseSogouProxy:
                 sogou_dns: dns used to lookup sogou server ip
                 sogou_network: sogou network: "dxt" or "edu"
                 external_ip: optional public ip of a exit router
+            events:
+                "listening": emit after server has been bound to listen port
         """
-        self.banned = {} # banned IP
         self.options = options
+        self.banned = {} # banned IP
         self.sogou_renew_timeout = 10*60*1000
+        self.public_ip_box = None
         self.request_id = 1
 
         self.sogou_port = 80
@@ -111,8 +119,15 @@ class ReverseSogouProxy:
         def _on_connection(sock):
             self._on_server_connection(sock)
 
-        def _on_client_error(err, socket):
-            log.error("HTTP Server clientError:", err)
+        def _on_client_error(err, sock):
+            r_ip = sock.remoteAddress
+            # hack to find missing remoteAddress
+            if not r_ip:
+                try:
+                    r_ip = sock._peername["address"]
+                except:
+                    pass
+            log.error("HTTP Server clientError:", err, r_ip)
 
         server = http.createServer(on_request)
         server.on("connection", _on_connection)
@@ -123,6 +138,16 @@ class ReverseSogouProxy:
     def do_proxy(self, req, res):
         """The handler of node proxy server"""
         host = req.headers["host"] or req.headers["Host"]
+
+        if not host: # as a reverse proxy, cannot handle missing host
+            self._handle_unknown_host(req, res)
+            return
+
+        # some host come with port
+        colon_idx = host.indexOf(":")
+        if colon_idx >= 0:
+            host = host[:colon_idx]
+
         domain_map = server_utils.fetch_user_domain()
         if not domain_map[host]:
             self._handle_unknown_host(req, res)
@@ -141,7 +166,7 @@ class ReverseSogouProxy:
         to_use_proxy = server_utils.is_valid_url(url)
 
         #log.debug("sogou:", self.sogou_info)
-        log.debug("do_proxy req.url:", url, to_use_proxy)
+        log.debug("do_proxy[%s] req.url:", self.request_id, url, to_use_proxy)
         req.headers["X-Droxy-SG"] = "" + to_use_proxy
         req.headers["X-Droxy-RID"] = "" + self.request_id
         self.request_id += 1
@@ -183,7 +208,8 @@ class ReverseSogouProxy:
             sock.destroy()
 
     def _on_proxy_error(self, err, req, res):
-        log.error("_on_proxy_error:", err, req.headers["host"], req.url)
+        log.error("_on_proxy_error:", err, req.headers["host"],
+                req.url, req.socket.remoteAddress)
         if 'ECONNRESET' is err.code:
             self.reset_count += 1
         elif 'ECONNREFUSED' is err.code:
@@ -229,17 +255,30 @@ class ReverseSogouProxy:
         sock = req.socket
         raddress = sock.remoteAddress
         sock.destroy()
-        if (raddress == self.options["listen_address"] or
-                raddress == self.options["external_ip"]):
+        local_hosts = [self.options["listen_address"],
+                self.options["external_ip"]]
+        if self.public_ip_box is not None:
+            local_hosts.push(self.public_ip_box.ip)
+        if raddress in local_hosts:
             self.rate_limiter.add_deny(raddress)
         else:
             self.banned[raddress] = True
-        log.warn("DoS attack:", req.headers, req.url, raddress)
+        log.warn("HTTP Proxy DoS attack:", req.headers, req.url, raddress)
+
+    def _on_listening(self):
+        addr = self.server.address()
+        log.info("Sogou proxy listens on %s:%d",
+                addr.address, addr.port)
+        self.emit("listening")
+
+    def set_public_ip_box(self, public_ip_box):
+        self.public_ip_box = public_ip_box
 
     def start(self):
-        log.info("Sogou proxy listens on %s:%d",
-                self.proxy_host, self.proxy_port)
-        self.server.listen(self.proxy_port, self.proxy_host)
+        def _on_listen():
+            self._on_listening()
+
+        self.server.listen(self.proxy_port, self.proxy_host, _on_listen)
 
         # change sogou server periodically
         def on_renew_timeout():

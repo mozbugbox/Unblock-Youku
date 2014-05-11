@@ -1,5 +1,5 @@
-About
-=====
+# About #
+
 The file in this directory is a reverse HTTP proxy server combined with a DNS
 proxy server (droxy).
 
@@ -8,8 +8,8 @@ names to itself. The droxy will then be able to transparently proxy the HTTP
 requests to the __redirected domain__ through the builtin HTTP proxy server.
 The builtin HTTP proxy will go through sogou proxy server by default.
 
-Disclaimer
-==========
+# Disclaimer #
+
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -21,8 +21,8 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-Privileged Port
-===============
+# Privileged Port #
+
 When running the server, if you see errors like this:
 ```
 { [Error: bind EACCES] code: 'EACCES', errno: 'EACCES', syscall: 'bind' }
@@ -47,10 +47,10 @@ information.
 
 To solve it, there are a few ways:
 
+  * port-forward with iptables or alike
   * run the server under root or sudo
   * use `setcap` to give all node.js script the port privilege
   * suid the server script file and run with root privilege
-  * port-forward with iptables or alike
   * some systemd capability setting if you are into systemd
 
 As you can see, running it under root is easier. But root is dangerous!
@@ -59,20 +59,23 @@ Therefore don't run any server under root!!
 Anyway, use your own judgement. We're not responsible for any damage caused
 by running the server. See the Disclaimer above.
 
-Dependency
-==========
+# Dependency #
 
-Build Dependency
-----------------
+## Build Dependency ##
+
  * rapydscript
 
-Runtime Dependency
-------------------
+## Runtime Dependency ##
+
  * http-proxy
  * optimist
 
-Usage
-=====
+### Optional Runtime Dependency ###
+
+ * chroot -- for chroot and drop root priviledge if run under `root`
+
+# Usage #
+
 Install dependencies by
 ```
     cd dns-reverse-proxy/
@@ -123,15 +126,20 @@ Options:
                      port forward                                [default: 80]
   --http-rate-limit  HTTP proxy rate limit per sec per IP. -1 = no limit
                                                                  [default: 20]
+  --run-as           run as unpriviledged user (sudo/root)
+                                                           [default: "nobody"]
+  --chroot-dir       chroot to given directory (sudo/root). Should copy
+                     /etc/resolv.conf to /newroot/etc/resovle.conf and make
+                     it readable if needed      [default: "/var/chroot/droxy"]
   --config, -c       load the given configuration file
-                   [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
+                    [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
   --debug, -D        debug mode                                               
   --help, -h         print help message                                       
 
 ```
 
-dns-no-relay
-------------
+## dns-no-relay ##
+
 This option is not needed if you run the server on local LAN network. It is
 used to protect the server from DoS attack when running on public network.
 
@@ -160,8 +168,8 @@ Where the `192.168.1.5` is our DNS proxy server. The other 2 servers are backup
 servers for non-routed domain names. Of course, using DNS provided by ISP in
 general is preferred over ~evil~ public DNS like 8.8.8.8.
 
-extra-url-list
---------------
+## extra-url-list ##
+
 Extra url patterns can be supplied with the `--extra-url-list` option. The
 option accept a argument as a JSON filename. The JSON file should contain a
 single array of url pattern strings, like:
@@ -170,8 +178,8 @@ single array of url pattern strings, like:
 ["http://example1.net/vid/*.cgi", "http://example2.net/vod/bin/*"]
 ```
 
-ext-ip
-------
+## ext-ip ##
+
 If a public DNS proxy server is setup behind a router, the `--ext-ip` option
 could be used to set the public IP address of the router.
 
@@ -189,8 +197,15 @@ periodically.
 
 `--dns-port` and `--http-port` might be useful when port forward is done.
 
-Hackinig
-========
+## Drop root privilege ##
+
+If the package `chroot` is installed, the server will drop root privilege and
+chroot when **running under root**.
+
+The options `--run-as` and `--chroot-dir` will take part in the action.
+
+# Hackinig #
+
 The code were mostly written in [RapydScript](http://rapydscript.pyjeon.com/)
 which is a pre-compiler for JavaScript, just like CoffeeScript. The syntax is
 basic Python with a few javascript concept.

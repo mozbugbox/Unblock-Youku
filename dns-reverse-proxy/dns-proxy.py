@@ -1,4 +1,5 @@
 # vim:fileencoding=utf-8:sw=4:et:syntax=python
+# DNS proxy server that hijack some filtered domain
 
 # RFC5625: DNS Proxy Implementation Guidelines
 # https://tools.ietf.org/html/rfc5625
@@ -494,7 +495,7 @@ class DnsUDPClient(EventEmitter):
         self.timeout_id = -1
         self.emit("timeout")
 
-class DnsProxy:
+class DnsProxy(EventEmitter):
     def __init__(self, options, router=None):
         """Router is used to route local name to ip
             options:
@@ -506,6 +507,8 @@ class DnsProxy:
             router: a router class to direct domain name to fake ip.
                     Should have a method router.lookup(domain_name)
                     return an ip address or None
+            Events:
+                "listening": emit when the server has been bound to port
 
         """
         if router is None:
@@ -553,11 +556,11 @@ class DnsProxy:
             for btype in self.banned_record_types:
                 if q["type"] == RECORD_TYPES[btype]:
                     self.banned[raddress] = True
-                    log.warn("DNS Proxy DoS (%s):", btype, raddress, q)
+                    log.warn("DNS Proxy DoS (%s):", btype, q, raddress)
                     return
             if q["class"] is not DNS_CLASSES.IN:
                 self.banned[raddress] = True
-                log.warn("DNS Proxy DoS bad class:", raddress, q)
+                log.warn("DNS Proxy DoS bad class:", q, raddress)
                 return
 
         ret = self.local_router_lookup(dns_msg, rport, raddress)
@@ -609,6 +612,7 @@ class DnsProxy:
     def _on_dns_listening(self):
         addr = self.usock.address()
         log.info("DNS proxy listens on %s:%d", addr.address, addr.port)
+        self.emit("listening")
 
     def create_a_message(self, msg_id, name, ip):
         """Create a DnsMessage with type "A" query result"""
@@ -695,42 +699,63 @@ class DnsProxy:
             if (now - time_stamp) > self.timeout:
                 del self.query_map[k]
 
+class PublicIPBox:
+    def __init__(self, domain):
+        """Get public IP of the given domain name.
+
+        @domain: can be the string "lookup" or a string of domain name
+        """
+        self.domain = domain
+        self.ip = None
+        self.check_timeout = 10*60*1000 # 10 minutes
+        self.check_iid = None # check setInterval id
+        self.start_lookup()
+
+    def _on_interval(self):
+        """lookup public IP and set it"""
+        target = self.domain
+
+        def _on_public_ip(public_ip):
+            """Update public IP"""
+            #log.debug("found public_ip:", public_ip)
+            if not public_ip:
+                log.warn("Failed to find valid public ip:",
+                        self.domain, self.ip)
+            elif public_ip != self.ip:
+                self.ip = public_ip
+                log.debug("public_ip:", self.domain, self.ip)
+
+        if target == "lookup":
+            utils.get_public_ip(_on_public_ip)
+        else: # domain name, do dns lookup
+            def _on_dns_lookup(err, addr, fam):
+                if err:
+                    log.warn("public_update error:", err)
+                _on_public_ip(addr)
+            dns.lookup(target, _on_dns_lookup)
+
+    def start_lookup(self):
+        self._on_interval() # check immediately
+        if not self.check_iid:
+            def _on_interval():
+                self._on_interval()
+            self.check_iid = setInterval(_on_interval, self.check_timeout)
+
+def createPublicIPBox(domain_name):
+    ipbox = PublicIPBox(domain_name)
+    return ipbox
+
 class BaseRouter:
     """Route domain address to known ip:
         www.sohu.com ==> 127.0.0.1
     """
     def __init__(self, address_map):
         self.address_map = address_map
-        self.check_timeout = 10*60*1000 # 10 minutes
-        self.replace = None
-        self.check_iid = None # check setInterval id
+        self.public_ip_box = None
 
-    def _on_interval(self):
-        """lookup replace target IP and set it"""
-        target = self.replace[0]
-        def _on_public_ip(public_ip):
-            if not public_ip:
-                log.warn("Failed to find valid public ip:", self.replace)
-            elif public_ip != self.replace[1]:
-                self.replace[1] = public_ip
-                log.debug("public_ip:", self.replace)
-        if target == "lookup":
-            utils.get_public_ip(_on_public_ip)
-        else: # domain name, do dns lookup
-            dns.lookup(target, def (err, addr, fam): _on_public_ip(addr);)
 
-    def replace_target(self, repl):
-        """Set replace pattern in the router target.
-        target which matches the repl will be replaced by the true IP
-
-        @repl: can be the string "lookup" or a string of domain name
-        """
-        self.replace = [repl, None]
-        self._on_interval() # check immediately
-        if not self.check_iid:
-            def _on_interval():
-                self._on_interval()
-            self.check_iid = setInterval(_on_interval, self.check_timeout)
+    def set_public_ip_box(self, public_ip_box):
+        self.public_ip_box = public_ip_box
 
     def set(self, domain, ip):
         """Add a new domain => ip route"""
@@ -743,8 +768,9 @@ class BaseRouter:
             result = self.address_map[address]
 
         # do target replace
-        if self.replace is not None and result == self.replace[0]:
-            result = self.replace[1]
+        ip_box = self.public_ip_box
+        if ip_box is not None and result == ip_box.domain:
+            result = ip_box.ip
         return result
 
 def createServer(options, router):
@@ -878,3 +904,4 @@ exports.BaseRouter = BaseRouter
 exports.createDnsResolver = createDnsResolver
 exports.createServer = createServer
 exports.createBaseRouter = createBaseRouter
+exports.createPublicIPBox = createPublicIPBox

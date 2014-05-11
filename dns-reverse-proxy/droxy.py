@@ -41,6 +41,9 @@ def load_dns_map(target_ip):
 
 def load_router_from_file(fname, dns_map):
     """Load domain -> ip map from a JSON file"""
+    if not (fname and fs.existsSync(fname)):
+        log.error("extra router file not found:", fname)
+        process.exit(2)
     data = fs.readFileSync(fname, "utf-8")
     # fix loose JSON: extra comma before }]
     data = data.replace(/,(\s*[\}|\]])/g, '$1')
@@ -52,6 +55,10 @@ def load_extra_url_list(fname):
     """Add extra url list to the shared urls
     The input file is a JSON file with a single array of url pattern strings
     """
+    if not (fname and fs.existsSync(fname)):
+        log.error("extra url filter file not found:", fname)
+        process.exit(2)
+
     data = fs.readFileSync(fname, "utf-8")
     data = data.replace(/,(\s*[\}|\]])/g, '$1')
     url_list = JSON.parse(data)
@@ -63,13 +70,22 @@ def load_extra_url_list(fname):
     for r in url_regex:
         shared_urls.url_regex_list.push(r)
 
+def drop_root(options):
+    """change root and drop root priviledge"""
+    try:
+        chroot = require("chroot")
+        rdir = options["chroot_dir"]
+        ruser = options["run_as"]
+        chroot(rdir, ruser)
+        process.env["PWD"] = "/"
+        log.info('changed root to "%s" and user to "%s"', rdir, ruser)
+    except as e:
+        log.warn("Failed to chroot:", e)
+
+server_count = 0
 def run_servers(argv):
     if argv["extra_url_list"]:
-        fname_extra_ul = argv["extra_url_list"]
-        if not (fname_extra_ul and fs.existsSync(fname_extra_ul)):
-            log.error("extra url filter file not found:", fname_extra_ul)
-            process.exit(2)
-        load_extra_url_list(fname_extra_ul)
+        load_extra_url_list(argv["extra_url_list"])
 
     # setup dns proxy
     dns_options = {
@@ -109,21 +125,31 @@ def run_servers(argv):
     dns_map = load_dns_map(target_ip)
 
     if argv["dns_extra_router"]:
-        fname_extra_rt = argv["dns_extra_router"]
-        if not (fname_extra_rt and fs.existsSync(fname_extra_rt)):
-            log.error("extra router file not found:", fname_extra_rt)
-            process.exit(2)
-        else:
-            load_router_from_file(fname_extra_rt, dns_map)
+        load_router_from_file(argv["dns_extra_router"], dns_map)
     #log.debug("dns_map:", dns_map)
 
+    # now we are set, create servers
     drouter = dnsproxy.createBaseRouter(dns_map)
-
-    if not (net.isIPv4(target_ip) or net.isIPv6(target_ip)):
-        drouter.replace_target(target_ip)
 
     dproxy = dnsproxy.createServer(dns_options, drouter)
     sproxy = reversesogouproxy.createServer(sogou_proxy_options)
+
+    # if need lookup externel IP
+    if not (net.isIPv4(target_ip) or net.isIPv6(target_ip)):
+        ipbox = dnsproxy.createPublicIPBox(target_ip)
+        drouter.set_public_ip_box(ipbox)
+        sproxy.set_public_ip_box(ipbox)
+
+    # drop root priviledge if run as root
+    def _on_listen():
+        nonlocal server_count
+        server_count += 1
+        if server_count >= 2:
+            drop_root(argv)
+
+    dproxy.on("listening", _on_listen)
+    sproxy.on("listening", _on_listen)
+
     dproxy.start()
     sproxy.start()
 
@@ -246,6 +272,16 @@ def parse_args():
                 "description"
                     : "HTTP proxy rate limit per sec per IP. -1 = no limit",
                 "default": 20,
+                },
+            "run-as": {
+                "description": "run as unpriviledged user (sudo/root)",
+                "default": "nobody",
+                },
+            "chroot-dir": {
+                "description": "chroot to given directory (sudo/root). " +
+                    "Should copy /etc/resolv.conf to " +
+                    "/newroot/etc/resovle.conf and make it readable if needed",
+                "default": "/var/chroot/droxy",
                 },
             "config": {
                 "description": "load the given configuration file",

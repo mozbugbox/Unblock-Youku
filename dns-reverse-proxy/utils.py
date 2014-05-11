@@ -265,7 +265,7 @@ class RateLimiter:
         ac_count += 1
         self.access_counts[saddr] = ac_count
         if ac_count > self.options["rate-limit"]:
-            msg = "DoS Attack:"
+            msg = "DoS Flood Attack:"
             if self.name is not None:
                 msg = self.name + " " + msg
             logger.warn(msg, saddr)
