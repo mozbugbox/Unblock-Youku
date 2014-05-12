@@ -75,13 +75,17 @@ class ReverseSogouProxy(EventEmitter):
             log.info("renewed sogou server:", addr_info)
             self.sogou_info = addr_info
             self.reset_sogou_flags()
+        def _on_error(err):
+            self.in_changing_sogou = -1
+            log.error("Error on renew sogou:", err)
         self.sogou_manager.on("renew-address", _on_renew_address)
+        self.sogou_manager.on("error", _on_error)
 
         self.renew_sogou_server(True)
 
     def reset_sogou_flags(self):
         """sogou server renew related flags"""
-        self.in_changing_sogou = False
+        self.in_changing_sogou = -1 # time stamp to future upate
         self.reset_count = 0
         self.refuse_count = 0
         self.timeout_count = 0
@@ -95,8 +99,9 @@ class ReverseSogouProxy(EventEmitter):
                 break
         if need_reset is False: return
 
-        if self.in_changing_sogou is True: return
-        self.in_changing_sogou = True
+        if 0 < self.in_changing_sogou < Date.now():
+            return
+        self.in_changing_sogou = Date.now() + self.sogou_renew_timeout
         log.debug("changing sogou server...")
         self.sogou_manager.renew_sogou_server()
 
@@ -128,10 +133,14 @@ class ReverseSogouProxy(EventEmitter):
                 except:
                     pass
             log.error("HTTP Server clientError:", err, r_ip)
+        def _on_error(err):
+            log.error("HTTP Server Error:", err)
+            process.exit(code=2)
 
         server = http.createServer(on_request)
         server.on("connection", _on_connection)
         server.on("clientError", _on_client_error)
+        server.on("error", _on_error)
 
         return server
 

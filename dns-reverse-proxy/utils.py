@@ -62,7 +62,9 @@ def add_sogou_headers(req_headers, hostname):
     req_headers['X-Sogou-Auth'] = sogou_auth
     req_headers['X-Sogou-Timestamp'] = timestamp
     req_headers['X-Sogou-Tag'] = sogou_tag
-    req_headers['X-Forwarded-For'] = shared_tools.new_random_ip()
+    random_ip = shared_tools.new_random_ip()
+    req_headers['X-Forwarded-For'] = random_ip
+    req_headers['Client-IP'] = random_ip
 
 class URLMatch:
     def __init__(self, url_list, prefix_len):
@@ -145,7 +147,10 @@ class SogouManager(EventEmitter):
                         "ip": ip
                         }
                 self.check_sogou_server(addr_info, depth)
-            self.dns_server.lookup(new_addr, _lookup_cb)
+            def _err_cb(err):
+                self.emit("error", err)
+
+            self.dns_server.lookup(new_addr, _lookup_cb, _err_cb)
         else:
             addr_info = {"address": new_addr}
             self.check_sogou_server(addr_info, depth)
