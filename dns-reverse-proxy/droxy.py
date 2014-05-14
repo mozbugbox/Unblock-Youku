@@ -6,8 +6,8 @@ net = require("net")
 
 dnsproxy = require("./dns-proxy")
 reversesogouproxy = require("./reverse-sogou-proxy")
-utils = require("./utils")
-log = utils.logger
+lutils = require("./lutils")
+log = lutils.logger
 
 appname = "ub.uku.droxy"
 
@@ -29,7 +29,7 @@ def load_dns_map(target_ip):
     """Create a DNS router to map a list of domain name to a target ip"""
     if not target_ip:
         target_ip = "127.0.0.1"
-    domain_map = utils.fetch_user_domain()
+    domain_map = lutils.fetch_user_domain()
     dmap = {}
     for domain in Object.keys(domain_map):
         dmap[domain] = target_ip

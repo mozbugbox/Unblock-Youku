@@ -1,4 +1,5 @@
 # vim:fileencoding=utf-8:sw=4:et:syntax=python
+"""Local utility functions and classes"""
 
 SOCKET_TIMEOUT = 10*1000
 UAGENT_CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.95 Safari/537.11"
@@ -121,8 +122,11 @@ def is_valid_url(target_url):
 
 class SogouManager(EventEmitter):
     """Provide active Sogou proxy"""
-    def __init__(self, dns_server):
-        self.dns_server = dns_server
+    def __init__(self, dns_resolver):
+        """
+        @dns_resolver : an optional DnsResolver to lookup sogou server IP
+        """
+        self.dns_resolver = dns_resolver
         self.sogou_network = None
 
     def new_proxy_address(self):
@@ -140,7 +144,7 @@ class SogouManager(EventEmitter):
         new_ip = None
 
         # use a give DNS to lookup ip of sogou server
-        if self.dns_server and not net.isIPv4(new_addr):
+        if self.dns_resolver and not net.isIPv4(new_addr):
             def _lookup_cb(name, ip):
                 addr_info = {
                         "address": name,
@@ -150,7 +154,7 @@ class SogouManager(EventEmitter):
             def _err_cb(err):
                 self.emit("error", err)
 
-            self.dns_server.lookup(new_addr, _lookup_cb, _err_cb)
+            self.dns_resolver.lookup(new_addr, _lookup_cb, _err_cb)
         else:
             addr_info = {"address": new_addr}
             self.check_sogou_server(addr_info, depth)
@@ -307,8 +311,8 @@ def createRateLimiter(options):
     rl = RateLimiter(options)
     return rl
 
-def createSogouManager(dns_server):
-    s = SogouManager(dns_server)
+def createSogouManager(dns_resolver):
+    s = SogouManager(dns_resolver)
     return s
 
 def filtered_request_headers(headers, forward_cookie):

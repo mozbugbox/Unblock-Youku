@@ -6,8 +6,8 @@
 dgram = require("dgram")
 dns = require("dns")
 EventEmitter = require("events").EventEmitter
-utils = require("./utils")
-log = utils.logger
+lutils = require("./lutils")
+log = lutils.logger
 
 BUFFER_SIZE = 2048 # STANDARD size should be 512 but who knows
 DEFAULT_TTL = 600 # time to live for our fake A record, in seconds
@@ -524,7 +524,7 @@ class DnsProxy(EventEmitter):
             options["dns_host"] = DNS_DEFAULT_HOST
         self.options = options
         rate_limit = self.options["dns_rate_limit"] or DNS_RATE_LIMIT
-        self.rate_limiter = utils.createRateLimiter({
+        self.rate_limiter = lutils.createRateLimiter({
             "rate-limit": rate_limit,
             })
         self.rate_limiter.set_name("DNS Proxy")
@@ -729,7 +729,7 @@ class PublicIPBox:
                 log.debug("public_ip:", self.domain, self.ip)
 
         if target == "lookup":
-            utils.get_public_ip(_on_public_ip)
+            lutils.get_public_ip(_on_public_ip)
         else: # domain name, do dns lookup
             def _on_dns_lookup(err, addr, fam):
                 if err:

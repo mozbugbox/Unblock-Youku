@@ -20,7 +20,7 @@ endif
 JS_TARGET = dns-proxy.js \
 	    droxy.js \
 	    reverse-sogou-proxy.js \
-	    utils.js \
+	    lutils.js \
 
 all: $(JS_TARGET)
 

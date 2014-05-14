@@ -6,10 +6,9 @@ http = require("http")
 EventEmitter = require("events").EventEmitter
 
 sogou = require('../shared/sogou')
-shared_tools = require('../shared/tools')
 dns_proxy = require("./dns-proxy")
-server_utils = require('./utils')
-log = server_utils.logger
+lutils = require('./lutils')
+log = lutils.logger
 
 HTTP_RATE_LIMIT = 10 # 10 proxy request/sec
 
@@ -52,7 +51,7 @@ class ReverseSogouProxy(EventEmitter):
         self.server = self.setup_server(options)
 
         rate_limit = self.options["http_rate_limit"] or HTTP_RATE_LIMIT
-        self.rate_limiter = server_utils.createRateLimiter({
+        self.rate_limiter = lutils.createRateLimiter({
             "rate-limit": rate_limit,
             })
         self.rate_limiter.set_name("HTTP Proxy")
@@ -68,7 +67,7 @@ class ReverseSogouProxy(EventEmitter):
             sg_dns = self.options["sogou_dns"]
             log.info("Sogou proxy DNS solver:", sg_dns)
             dns_resolver = dns_proxy.createDnsResolver(sg_dns)
-        self.sogou_manager = server_utils.createSogouManager(dns_resolver)
+        self.sogou_manager = lutils.createSogouManager(dns_resolver)
         self.sogou_manager.sogou_network = self.options["sogou_network"]
 
         def _on_renew_address(addr_info):
@@ -146,18 +145,18 @@ class ReverseSogouProxy(EventEmitter):
 
     def do_proxy(self, req, res):
         """The handler of node proxy server"""
-        host = req.headers["host"] or req.headers["Host"]
+        raw_host = req.headers["host"] or req.headers["Host"]
 
-        if not host: # as a reverse proxy, cannot handle missing host
+        if not raw_host: # as a reverse proxy, cannot handle missing host
             self._handle_unknown_host(req, res)
             return
 
         # some host come with port
-        colon_idx = host.indexOf(":")
-        if colon_idx >= 0:
-            host = host[:colon_idx]
+        host_parts = raw_host.split(":")
+        host = host_parts[0]
+        port = int(host_parts[1] or 80)
 
-        domain_map = server_utils.fetch_user_domain()
+        domain_map = lutils.fetch_user_domain()
         if not domain_map[host]:
             self._handle_unknown_host(req, res)
             return
@@ -168,11 +167,14 @@ class ReverseSogouProxy(EventEmitter):
         # A httpd server normally receives path to the GET/POST request, but
         # being a proxy, the request need to be absolute URI, not just path.
         if req.url.indexOf("http") is not 0:
-            url = "http://" + host + req.url
+            if port == 80:
+                url = "http://" + host + req.url
+            else:
+                url = "http://" + host + ":" + port + req.url
             req.url = url
         else:
             url = req.url
-        to_use_proxy = server_utils.is_valid_url(url)
+        to_use_proxy = lutils.is_valid_url(url)
 
         #log.debug("sogou:", self.sogou_info)
         log.debug("do_proxy[%s] req.url:", self.request_id, url, to_use_proxy)
@@ -182,13 +184,13 @@ class ReverseSogouProxy(EventEmitter):
 
         # cannot forward cookie settings for other domains in redirect mode
         forward_cookies = False
-        if shared_tools.string_starts_with(req.url, 'http'):
+        if req.url.indexOf('http') is 0:
             forward_cookies = True
 
         if to_use_proxy:
             si = self.sogou_info
             sogou_host = si["ip"] or si["address"]
-            server_utils.add_sogou_headers(req.headers, req.headers["host"])
+            lutils.add_sogou_headers(req.headers, req.headers["host"])
             proxy_options = {
                     "target": {
                         "host": sogou_host, "port": self.sogou_port,
@@ -202,7 +204,7 @@ class ReverseSogouProxy(EventEmitter):
             }
 
         # log.debug("do_proxy headers before:", req.headers)
-        headers = server_utils.filtered_request_headers(
+        headers = lutils.filtered_request_headers(
                 req.headers, forward_cookies)
         req.headers = headers
         log.debug("do_proxy[%s] headers:", headers["X-Droxy-Rid"], headers,
