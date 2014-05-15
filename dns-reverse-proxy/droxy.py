@@ -77,6 +77,8 @@ def drop_root(options):
         rdir = options["chroot_dir"]
         ruser = options["run_as"]
         chroot(rdir, ruser)
+        for k in Object.keys(process.env):
+            del process.env[k]
         process.env["PWD"] = "/"
         log.info('changed root to "%s" and user to "%s"', rdir, ruser)
     except as e:
