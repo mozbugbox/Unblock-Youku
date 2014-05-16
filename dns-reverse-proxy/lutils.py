@@ -280,12 +280,13 @@ class RateLimiter:
             logger.warn(msg, saddr)
             ret = True
             self.add_deny(saddr)
-            del self.access_counts[saddr]
         return ret
 
     def add_deny(self, saddr):
         """Add a source address to the deny map"""
         self.deny_map[saddr] = Date.now() + self.deny_timeout
+        if self.access_counts[saddr]:
+            del self.access_counts[saddr]
 
     def start(self):
         """start the periodic check"""

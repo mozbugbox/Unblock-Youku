@@ -552,7 +552,13 @@ class DnsProxy(EventEmitter):
             BUFFER_SIZE = buf.length
 
         rport = remote_info.port
-        dns_msg = DnsMessage(buf)
+        try:
+            dns_msg = DnsMessage(buf)
+        except as e:
+            log.error("DNS Proxy DoS attack: decode message failed:", e,
+                    raddress)
+            self.rate_limiter.add_deny(raddress)
+            return
 
         # Drop all the DNS.ANY questions. It's just stupid
         for q in dns_msg.question:

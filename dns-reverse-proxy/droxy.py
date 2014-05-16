@@ -80,9 +80,18 @@ def drop_root(options):
         for k in Object.keys(process.env):
             del process.env[k]
         process.env["PWD"] = "/"
+        process.env["HOME"] = "/"
         log.info('changed root to "%s" and user to "%s"', rdir, ruser)
+
+        # see if resolv.conf exists for getaddrinfo()
+        resolv_path = "/etc/resolv.conf"
+        try:
+            _ = fs.openSync(resolv_path, "r")
+            fs.close(_)
+        except as e:
+            log.warn("WARN: %s is not reachable", resolv_path)
     except as e:
-        log.warn("Failed to chroot:", e)
+        log.warn("WARN: Failed to chroot:", e)
 
 server_count = 0
 def run_servers(argv):
@@ -217,7 +226,7 @@ def parse_args():
                 },
             "dns-host": {
                 "description"
-                    : "remote dns host. default: first in /etc/resolve.conf",
+                    : "remote dns host. default: first in /etc/resolv.conf",
                 },
             "sogou-dns": {
                 "description"
@@ -282,7 +291,7 @@ def parse_args():
             "chroot-dir": {
                 "description": "chroot to given directory (sudo/root). " +
                     "Should copy /etc/resolv.conf to " +
-                    "/newroot/etc/resovle.conf and make it readable if needed",
+                    "/newroot/etc/resolv.conf and make it readable if needed",
                 "default": "/var/chroot/droxy",
                 },
             "config": {

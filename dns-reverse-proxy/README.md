@@ -108,7 +108,7 @@ Usage:
 
 Options:
   --ip               local IP address to listen on        [default: "0.0.0.0"]
-  --dns-host         remote dns host. default: first in /etc/resolve.conf     
+  --dns-host         remote dns host. default: first in /etc/resolv.conf      
   --sogou-dns        DNS used to lookup IP of sogou proxy servers
                                                                [default: null]
   --sogou-network    choose between "edu" and "dxt"            [default: null]
@@ -129,8 +129,8 @@ Options:
   --run-as           run as unpriviledged user (sudo/root)
                                                            [default: "nobody"]
   --chroot-dir       chroot to given directory (sudo/root). Should copy
-                     /etc/resolv.conf to /newroot/etc/resovle.conf and make
-                     it readable if needed      [default: "/var/chroot/droxy"]
+                     /etc/resolv.conf to /newroot/etc/resolv.conf and make it
+                     readable if needed         [default: "/var/chroot/droxy"]
   --config, -c       load the given configuration file
                     [default: "/home/johndoe/.config/ub.uku.droxy/config.json"]
   --debug, -D        debug mode                                               
@@ -179,6 +179,9 @@ single array of url pattern strings, like:
 ```
 
 ## ext-ip ##
+
+**NOTE**: Don't run a public DNS proxy server if you don't have to! People are
+hacking servers around the clock!
 
 If a public DNS proxy server is setup behind a router, the `--ext-ip` option
 could be used to set the public IP address of the router.
